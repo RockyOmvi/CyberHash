@@ -25,7 +25,7 @@ func (a *AWSScanner) Start(ctx context.Context, target string) (string, error) {
 	// Target in this case would be an Account ID or ARN
 	scanID := fmt.Sprintf("aws-%d", time.Now().Unix())
 	fmt.Printf("Starting AWS Config scan for account %s in %s with ID %s\n", target, a.region, scanID)
-	
+
 	// In reality: Initialize AWS Session, run Steampipe queries or AWS Config checks
 	return scanID, nil
 }
@@ -61,4 +61,8 @@ func (a *AWSScanner) GetResults(ctx context.Context, scanID string) (*ScanResult
 			},
 		},
 	}, nil
+}
+
+func (a *AWSScanner) GetHistory(ctx context.Context) ([]*ScanResult, error) {
+	return nil, nil // AWS scanner is stateless in this implementation
 }

@@ -3,10 +3,13 @@ package scanner
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
 )
 
 // MockScanner for testing
 type MockScanner struct {
+	mock.Mock
 	ID string
 }
 
@@ -26,6 +29,10 @@ func (m *MockScanner) GetResults(ctx context.Context, scanID string) (*ScanResul
 			{Title: "Mock Vuln from " + m.ID, Severity: "High"},
 		},
 	}, nil
+}
+
+func (m *MockScanner) GetHistory(ctx context.Context) ([]*ScanResult, error) {
+	return nil, nil
 }
 
 func TestOrchestrator_Start(t *testing.T) {

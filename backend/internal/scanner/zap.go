@@ -22,7 +22,7 @@ func (z *ZAPScanner) Start(ctx context.Context, target string) (string, error) {
 	// Mock: Generate a random Scan ID
 	scanID := fmt.Sprintf("zap-%d", time.Now().Unix())
 	fmt.Printf("Starting ZAP scan for %s with ID %s\n", target, scanID)
-	
+
 	// In reality: Call ZAP API to start spider/scan
 	return scanID, nil
 }
@@ -53,4 +53,8 @@ func (z *ZAPScanner) GetResults(ctx context.Context, scanID string) (*ScanResult
 			},
 		},
 	}, nil
+}
+
+func (z *ZAPScanner) GetHistory(ctx context.Context) ([]*ScanResult, error) {
+	return nil, nil // ZAP scanner is stateless in this implementation
 }

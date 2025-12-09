@@ -4,49 +4,73 @@ import (
 	"net/http"
 
 	"github.com/cybershield-ai/core/internal/ai"
+	"github.com/cybershield-ai/core/internal/auth"
 	"github.com/cybershield-ai/core/internal/middleware"
 	"github.com/cybershield-ai/core/internal/scanner"
 	"github.com/gin-gonic/gin"
 )
 
 type Server struct {
-	router   *gin.Engine
-	scanner  scanner.Scanner
-	aiEngine *ai.RemediationEngine
+	router    *gin.Engine
+	scanner   scanner.Scanner
+	aiEngine  *ai.RemediationEngine
+	wsManager *WebSocketManager
+	userStore *auth.UserStore
 }
 
 func NewServer() *Server {
 	r := gin.Default()
-	
+
+	// Initialize WebSocket Manager
+	wsManager := NewWebSocketManager()
+	go wsManager.HandleMessages()
+
 	// Initialize Scanners
 	zapScanner := scanner.NewZAPScanner("dummy-api-key")
 	awsScanner := scanner.NewAWSScanner("us-east-1", "AKIA...", "SECRET...")
-	
+
 	// Create Orchestrator with both scanners
 	orchestrator := scanner.NewOrchestrator(zapScanner, awsScanner)
 
 	// Initialize AI Engine
 	aiEngine := ai.NewRemediationEngine("dummy-openai-key")
 
+	// Initialize User Store
+	userStore := auth.NewUserStore()
+
 	s := &Server{
-		router:   r,
-		scanner:  orchestrator,
-		aiEngine: aiEngine,
+		router:    r,
+		scanner:   orchestrator,
+		aiEngine:  aiEngine,
+		wsManager: wsManager,
+		userStore: userStore,
 	}
-	
+
 	// Health Check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
+			"status":  "ok",
 			"service": "cybershield-core",
 		})
 	})
 
+	// WebSocket Endpoint
+	r.GET("/ws", s.wsManager.HandleConnections)
+
+	// Auth Routes
+	auth := r.Group("/auth")
+	{
+		auth.POST("/register", s.register)
+		auth.POST("/login", s.login)
+	}
+
 	// API Group
 	v1 := r.Group("/api/v1")
 	v1.Use(middleware.TenantMiddleware()) // Apply to all v1 routes
+	v1.Use(middleware.AuthMiddleware())   // Protect all v1 routes
 	{
 		v1.POST("/scans", s.startScan)
+		v1.GET("/scans", s.getScanHistory)
 		v1.GET("/scans/:id", s.getScanStatus)
 		v1.POST("/remediate", s.generateRemediation)
 	}
@@ -73,15 +97,20 @@ func (s *Server) startScan(c *gin.Context) {
 		return
 	}
 
+	s.wsManager.BroadcastLog("INFO", "Initiating scan for target: "+req.Target)
+
 	scanID, err := s.scanner.Start(c.Request.Context(), req.Target)
 	if err != nil {
+		s.wsManager.BroadcastLog("ERROR", "Failed to start scan: "+err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start scan"})
 		return
 	}
 
+	s.wsManager.BroadcastLog("SUCCESS", "Scan started successfully. ID: "+scanID)
+
 	c.JSON(http.StatusAccepted, gin.H{
 		"scan_id": scanID,
-		"status": "queued",
+		"status":  "queued",
 		"message": "Scan started successfully",
 	})
 }
@@ -130,4 +159,13 @@ func (s *Server) generateRemediation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"fix": fix,
 	})
+}
+
+func (s *Server) getScanHistory(c *gin.Context) {
+	history, err := s.scanner.GetHistory(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get history"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"scans": history})
 }

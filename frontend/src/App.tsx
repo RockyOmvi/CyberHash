@@ -3,7 +3,7 @@ import {
     Activity,
     Server,
     ShieldAlert,
-    History
+    LogOut
 } from 'lucide-react';
 import {
     Chart as ChartJS,
@@ -20,7 +20,13 @@ import { Line } from 'react-chartjs-2';
 import { ScanForm } from './components/ScanForm';
 import { VulnerabilityList } from './components/VulnerabilityList';
 import { RemediationPanel } from './components/RemediationPanel';
+import { ScanHistory } from './components/ScanHistory';
+import { NetworkGraph } from './components/NetworkGraph';
 import { api, Vulnerability } from './services/api';
+import { wsService, LogMessage } from './services/websocket';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 
 ChartJS.register(
     CategoryScale,
@@ -65,12 +71,23 @@ const chartData = {
     }]
 };
 
-function App() {
+function Dashboard() {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'history'>('dashboard');
     const [currentScanId, setCurrentScanId] = useState<string | null>(null);
     const [scanStatus, setScanStatus] = useState<string>('');
     const [scanResults, setScanResults] = useState<Vulnerability[]>([]);
     const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
+    const [logs, setLogs] = useState<LogMessage[]>([]);
+    const { user, logout } = useAuth();
+
+    // Initialize WebSocket
+    useEffect(() => {
+        wsService.connect();
+        const unsubscribe = wsService.subscribe((msg) => {
+            setLogs(prev => [msg, ...prev].slice(0, 50)); // Keep last 50 logs
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Poll for scan status
     useEffect(() => {
@@ -141,6 +158,13 @@ function App() {
                                 {scanStatus === 'running' ? 'SCANNING...' : 'SYSTEM READY'}
                             </span>
                         </div>
+                        <div className="h-6 w-px bg-white/10 mx-2"></div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-sm text-slate-400 hidden sm:block">{user?.name}</span>
+                            <button onClick={logout} className="text-slate-400 hover:text-white transition-colors" title="Logout">
+                                <LogOut size={18} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </nav>
@@ -190,10 +214,40 @@ function App() {
                         </div>
 
                         {/* Chart Area */}
-                        <div className="glass-surface p-6 rounded-xl border border-white/10 h-[300px]">
-                            <h3 className="text-sm font-semibold text-white mb-4">Traffic Analysis</h3>
-                            <div className="h-[220px] w-full">
-                                <Line options={chartOptions} data={chartData} />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="glass-surface p-6 rounded-xl border border-white/10 h-[300px]">
+                                <h3 className="text-sm font-semibold text-white mb-4">Traffic Analysis</h3>
+                                <div className="h-[220px] w-full">
+                                    <Line options={chartOptions} data={chartData} />
+                                </div>
+                            </div>
+                            <div className="glass-surface p-6 rounded-xl border border-white/10 h-[300px]">
+                                <h3 className="text-sm font-semibold text-white mb-4">Attack Surface Map</h3>
+                                <NetworkGraph />
+                            </div>
+                        </div>
+
+                        {/* Logs/Events */}
+                        <div className="glass-surface border border-white/5 rounded-xl flex flex-col h-[300px]">
+                            <div className="p-4 border-b border-white/5 flex justify-between items-center">
+                                <h4 className="text-xs font-semibold text-white">Live Event Log</h4>
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                                </span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-3 space-y-2 font-mono text-[10px] scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                                {logs.length === 0 ? (
+                                    <p className="text-slate-600 text-center mt-10">Waiting for events...</p>
+                                ) : (
+                                    logs.map((log, idx) => (
+                                        <div key={idx} className="flex gap-2 items-center text-slate-400 p-1.5 hover:bg-white/5 rounded cursor-pointer group">
+                                            <span className="text-slate-600">{log.timestamp}</span>
+                                            <span className={`${log.level === 'ERROR' ? 'text-red-400' : log.level === 'SUCCESS' ? 'text-emerald-400' : 'text-cyan-400'}`}>{log.level}</span>
+                                            <span className="group-hover:text-white transition-colors">{log.message}</span>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
@@ -242,9 +296,9 @@ function App() {
                 )}
 
                 {activeTab === 'history' && (
-                    <div className="glass-surface p-8 rounded-xl border border-white/10 text-center text-slate-500">
-                        <History className="mx-auto mb-4 opacity-50" size={48} />
-                        <p>Scan history feature coming soon...</p>
+                    <div className="glass-surface p-8 rounded-xl border border-white/10">
+                        <h3 className="text-lg font-semibold text-white mb-6">Scan History</h3>
+                        <ScanHistory />
                     </div>
                 )}
 
@@ -262,4 +316,25 @@ function App() {
     );
 }
 
-export default App;
+function AppContent() {
+    const { isAuthenticated } = useAuth();
+    const [isRegistering, setIsRegistering] = useState(false);
+
+    if (isAuthenticated) {
+        return <Dashboard />;
+    }
+
+    if (isRegistering) {
+        return <RegisterPage onLoginClick={() => setIsRegistering(false)} />;
+    }
+
+    return <LoginPage onRegisterClick={() => setIsRegistering(true)} />;
+}
+
+export default function App() {
+    return (
+        <AuthProvider>
+            <AppContent />
+        </AuthProvider>
+    );
+}
