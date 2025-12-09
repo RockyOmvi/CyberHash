@@ -82,5 +82,31 @@ export const api = {
         });
         if (!response.ok) throw new Error('Failed to fetch history');
         return response.json();
-    }
+    },
+
+    downloadReport: async (scanId: string) => {
+        const response = await fetch(`${API_BASE_URL}/scans/${scanId}/report`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) throw new Error('Failed to download report');
+        return response.blob();
+    },
+
+    createSchedule: async (target: string, frequency: string) => {
+        const response = await fetch(`${API_BASE_URL}/schedules`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ target, frequency }),
+        });
+        if (!response.ok) throw new Error('Failed to create schedule');
+        return response.json();
+    },
+
+    getSchedules: async () => {
+        const response = await fetch(`${API_BASE_URL}/schedules`, {
+            headers: getHeaders(),
+        });
+        if (!response.ok) throw new Error('Failed to get schedules');
+        return response.json();
+    },
 };

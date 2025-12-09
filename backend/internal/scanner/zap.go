@@ -3,13 +3,14 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"sync"
 	"time"
 )
 
 type ZAPScanner struct {
 	// In a real implementation, this would hold the ZAP API client
-	apiKey string
+	apiKey    string
+	scanStart sync.Map // map[string]time.Time
 }
 
 func NewZAPScanner(apiKey string) *ZAPScanner {
@@ -23,14 +24,25 @@ func (z *ZAPScanner) Start(ctx context.Context, target string) (string, error) {
 	scanID := fmt.Sprintf("zap-%d", time.Now().Unix())
 	fmt.Printf("Starting ZAP scan for %s with ID %s\n", target, scanID)
 
+	z.scanStart.Store(scanID, time.Now())
+
 	// In reality: Call ZAP API to start spider/scan
 	return scanID, nil
 }
 
 func (z *ZAPScanner) GetStatus(ctx context.Context, scanID string) (string, int, error) {
-	// Mock: Simulate progress based on time (just for demo)
-	// In reality: Call ZAP API to get status
-	return "running", rand.Intn(100), nil
+	start, ok := z.scanStart.Load(scanID)
+	if !ok {
+		return "unknown", 0, nil
+	}
+
+	elapsed := time.Since(start.(time.Time))
+	if elapsed > 10*time.Second {
+		return "completed", 100, nil
+	}
+
+	progress := int((elapsed.Seconds() / 10.0) * 100)
+	return "running", progress, nil
 }
 
 func (z *ZAPScanner) GetResults(ctx context.Context, scanID string) (*ScanResult, error) {
@@ -50,6 +62,12 @@ func (z *ZAPScanner) GetResults(ctx context.Context, scanID string) (*ScanResult
 				Description: "X-Frame-Options header is missing.",
 				Severity:    "Low",
 				Solution:    "Add 'X-Frame-Options: DENY' to the response.",
+			},
+			{
+				Title:       "SQL Injection",
+				Description: "User input is constructed into a SQL query without sanitization.",
+				Severity:    "Critical",
+				Solution:    "Use parameterized queries or prepared statements.",
 			},
 		},
 	}, nil

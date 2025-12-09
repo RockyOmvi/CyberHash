@@ -1,24 +1,41 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/cybershield-ai/core/internal/ai"
 	"github.com/cybershield-ai/core/internal/auth"
+	"github.com/cybershield-ai/core/internal/database"
 	"github.com/cybershield-ai/core/internal/middleware"
+	"github.com/cybershield-ai/core/internal/reporting"
 	"github.com/cybershield-ai/core/internal/scanner"
+	"github.com/cybershield-ai/core/internal/scheduler"
 	"github.com/gin-gonic/gin"
 )
 
 type Server struct {
-	router    *gin.Engine
-	scanner   scanner.Scanner
-	aiEngine  *ai.RemediationEngine
-	wsManager *WebSocketManager
-	userStore *auth.UserStore
+	router       *gin.Engine
+	orchestrator *scanner.Orchestrator
+	userStore    *auth.UserStore
+	aiEngine     *ai.RemediationEngine
+	wsManager    *WebSocketManager
+	scheduler    *scheduler.Scheduler
 }
 
 func NewServer() *Server {
+	// Initialize Database
+	db, err := database.InitDB()
+	if err != nil {
+		panic("failed to connect to database: " + err.Error())
+	}
+
+	// Auto Migration
+	if err := db.AutoMigrate(&auth.User{}, &scanner.ScanResult{}, &scanner.Vuln{}, &scheduler.ScheduledScan{}); err != nil {
+		panic("failed to migrate database: " + err.Error())
+	}
+
 	r := gin.Default()
 
 	// Initialize WebSocket Manager
@@ -26,24 +43,30 @@ func NewServer() *Server {
 	go wsManager.HandleMessages()
 
 	// Initialize Scanners
-	zapScanner := scanner.NewZAPScanner("dummy-api-key")
-	awsScanner := scanner.NewAWSScanner("us-east-1", "AKIA...", "SECRET...")
+	zapScanner := scanner.NewZAPScanner("dummy-zap-key")
+	awsScanner := scanner.NewAWSScanner("us-east-1", "dummy-access-key", "dummy-secret-key")
 
-	// Create Orchestrator with both scanners
-	orchestrator := scanner.NewOrchestrator(zapScanner, awsScanner)
+	// Initialize Orchestrator with DB
+	orchestrator := scanner.NewOrchestrator(db, zapScanner, awsScanner)
+
+	// Initialize Scheduler
+	sched := scheduler.NewScheduler(db, orchestrator)
+	sched.Start()
 
 	// Initialize AI Engine
-	aiEngine := ai.NewRemediationEngine("dummy-openai-key")
+	apiKey := getEnv("GEMINI_API_KEY", "")
+	aiEngine := ai.NewRemediationEngine(apiKey)
 
-	// Initialize User Store
-	userStore := auth.NewUserStore()
+	// Initialize UserStore with DB
+	userStore := auth.NewUserStore(db)
 
 	s := &Server{
-		router:    r,
-		scanner:   orchestrator,
-		aiEngine:  aiEngine,
-		wsManager: wsManager,
-		userStore: userStore,
+		router:       r,
+		orchestrator: orchestrator,
+		userStore:    userStore,
+		aiEngine:     aiEngine,
+		wsManager:    wsManager,
+		scheduler:    sched,
 	}
 
 	// Health Check
@@ -58,10 +81,10 @@ func NewServer() *Server {
 	r.GET("/ws", s.wsManager.HandleConnections)
 
 	// Auth Routes
-	auth := r.Group("/auth")
+	authGroup := r.Group("/auth")
 	{
-		auth.POST("/register", s.register)
-		auth.POST("/login", s.login)
+		authGroup.POST("/register", s.register)
+		authGroup.POST("/login", s.login)
 	}
 
 	// API Group
@@ -72,7 +95,11 @@ func NewServer() *Server {
 		v1.POST("/scans", s.startScan)
 		v1.GET("/scans", s.getScanHistory)
 		v1.GET("/scans/:id", s.getScanStatus)
+		v1.GET("/scans/:id/report", s.downloadReport)
 		v1.POST("/remediate", s.generateRemediation)
+
+		v1.POST("/schedules", s.createSchedule)
+		v1.GET("/schedules", s.getSchedules)
 	}
 
 	// Webhooks (Public)
@@ -99,7 +126,7 @@ func (s *Server) startScan(c *gin.Context) {
 
 	s.wsManager.BroadcastLog("INFO", "Initiating scan for target: "+req.Target)
 
-	scanID, err := s.scanner.Start(c.Request.Context(), req.Target)
+	scanID, err := s.orchestrator.Start(c.Request.Context(), req.Target)
 	if err != nil {
 		s.wsManager.BroadcastLog("ERROR", "Failed to start scan: "+err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start scan"})
@@ -117,7 +144,7 @@ func (s *Server) startScan(c *gin.Context) {
 
 func (s *Server) getScanStatus(c *gin.Context) {
 	id := c.Param("id")
-	status, progress, err := s.scanner.GetStatus(c.Request.Context(), id)
+	status, progress, err := s.orchestrator.GetStatus(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get status"})
 		return
@@ -126,7 +153,7 @@ func (s *Server) getScanStatus(c *gin.Context) {
 	// If completed, fetch results (simplified logic)
 	var results *scanner.ScanResult
 	if status == "completed" {
-		results, _ = s.scanner.GetResults(c.Request.Context(), id)
+		results, _ = s.orchestrator.GetResults(c.Request.Context(), id)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -152,6 +179,7 @@ func (s *Server) generateRemediation(c *gin.Context) {
 
 	fix, err := s.aiEngine.GenerateFix(c.Request.Context(), req.Title, req.Description, req.TechStack)
 	if err != nil {
+		fmt.Printf("AI Generation Error: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate fix"})
 		return
 	}
@@ -162,10 +190,66 @@ func (s *Server) generateRemediation(c *gin.Context) {
 }
 
 func (s *Server) getScanHistory(c *gin.Context) {
-	history, err := s.scanner.GetHistory(c.Request.Context())
+	history, err := s.orchestrator.GetHistory(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get history"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"scans": history})
+}
+
+func (s *Server) downloadReport(c *gin.Context) {
+	id := c.Param("id")
+	results, err := s.orchestrator.GetResults(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Scan not found"})
+		return
+	}
+
+	pdfBytes, err := reporting.GenerateReport(results)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate report"})
+		return
+	}
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename=report-"+id+".pdf")
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
+type CreateScheduleRequest struct {
+	Target    string `json:"target" binding:"required"`
+	Frequency string `json:"frequency" binding:"required"` // e.g., "@daily"
+}
+
+func (s *Server) createSchedule(c *gin.Context) {
+	var req CreateScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	schedule, err := s.scheduler.AddSchedule(req.Target, req.Frequency)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create schedule"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, schedule)
+}
+
+func (s *Server) getSchedules(c *gin.Context) {
+	schedules, err := s.scheduler.GetSchedules()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get schedules"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"schedules": schedules})
 }

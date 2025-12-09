@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // MockScanner for testing
@@ -35,10 +37,20 @@ func (m *MockScanner) GetHistory(ctx context.Context) ([]*ScanResult, error) {
 	return nil, nil
 }
 
+func setupTestDB() *gorm.DB {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect to test database")
+	}
+	db.AutoMigrate(&ScanResult{}, &Vuln{})
+	return db
+}
+
 func TestOrchestrator_Start(t *testing.T) {
+	db := setupTestDB()
 	mock1 := &MockScanner{ID: "scanner1"}
 	mock2 := &MockScanner{ID: "scanner2"}
-	orch := NewOrchestrator(mock1, mock2)
+	orch := NewOrchestrator(db, mock1, mock2)
 
 	id, err := orch.Start(context.Background(), "localhost")
 	if err != nil {
@@ -50,9 +62,13 @@ func TestOrchestrator_Start(t *testing.T) {
 }
 
 func TestOrchestrator_GetResults(t *testing.T) {
+	db := setupTestDB()
 	mock1 := &MockScanner{ID: "scanner1"}
 	mock2 := &MockScanner{ID: "scanner2"}
-	orch := NewOrchestrator(mock1, mock2)
+	orch := NewOrchestrator(db, mock1, mock2)
+
+	// Pre-seed scan in DB
+	db.Create(&ScanResult{ScanID: "scan-123", Target: "localhost", Status: "running"})
 
 	results, err := orch.GetResults(context.Background(), "scan-123")
 	if err != nil {

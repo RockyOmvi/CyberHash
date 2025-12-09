@@ -35,7 +35,7 @@ func (s *Server) register(c *gin.Context) {
 		return
 	}
 
-	token, err := generateToken(user.ID)
+	token, err := generateToken(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -60,7 +60,7 @@ func (s *Server) login(c *gin.Context) {
 		return
 	}
 
-	token, err := generateToken(user.ID)
+	token, err := generateToken(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -72,9 +72,10 @@ func (s *Server) login(c *gin.Context) {
 	})
 }
 
-func generateToken(userID string) (string, error) {
+func generateToken(user *auth.User) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": userID,
+		"user_id": user.ID,
+		"role":    user.Role,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

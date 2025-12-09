@@ -8,6 +8,7 @@ interface ScanFormProps {
 
 export function ScanForm({ onScanStarted }: ScanFormProps) {
     const [target, setTarget] = useState('');
+    const [frequency, setFrequency] = useState('once');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -18,9 +19,16 @@ export function ScanForm({ onScanStarted }: ScanFormProps) {
         setLoading(true);
         setError('');
         try {
-            const data = await api.startScan(target);
-            onScanStarted(data.scan_id);
+            if (frequency === 'once') {
+                const data = await api.startScan(target);
+                onScanStarted(data.scan_id);
+            } else {
+                await api.createSchedule(target, frequency);
+                // Maybe show a success message or switch tab?
+                // For now, just clear the form
+            }
             setTarget('');
+            setFrequency('once');
         } catch (err) {
             setError('Failed to start scan. Please try again.');
         } finally {
@@ -34,7 +42,7 @@ export function ScanForm({ onScanStarted }: ScanFormProps) {
                 <Shield className="text-cyan-400" size={20} />
                 New Security Scan
             </h3>
-            <form onSubmit={handleSubmit} className="relative">
+            <form onSubmit={handleSubmit} className="relative space-y-4">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                     <input
@@ -45,14 +53,27 @@ export function ScanForm({ onScanStarted }: ScanFormProps) {
                         className="w-full bg-black/20 border border-white/10 rounded-lg py-3 pl-10 pr-4 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all"
                     />
                 </div>
-                {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-                <button
-                    type="submit"
-                    disabled={loading || !target}
-                    className="mt-4 w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {loading ? <Loader2 className="animate-spin" size={18} /> : 'Start Scan'}
-                </button>
+
+                <div className="flex gap-4">
+                    <select
+                        value={frequency}
+                        onChange={(e) => setFrequency(e.target.value)}
+                        className="bg-black/20 border border-white/10 rounded-lg py-3 px-4 text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-all"
+                    >
+                        <option value="once">Run Once</option>
+                        <option value="@daily">Daily</option>
+                        <option value="@weekly">Weekly</option>
+                    </select>
+
+                    <button
+                        type="submit"
+                        disabled={loading || !target}
+                        className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {loading ? <Loader2 className="animate-spin" size={18} /> : (frequency === 'once' ? 'Start Scan' : 'Schedule Scan')}
+                    </button>
+                </div>
+                {error && <p className="text-red-400 text-xs">{error}</p>}
             </form>
         </div>
     );

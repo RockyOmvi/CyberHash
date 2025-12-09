@@ -4,26 +4,24 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"gorm.io/gorm"
 )
 
 // Orchestrator manages multiple scanner instances
 type Orchestrator struct {
 	scanners []Scanner
-	history  []*ScanResult
-	mu       sync.RWMutex
+	db       *gorm.DB
 }
 
-func NewOrchestrator(scanners ...Scanner) *Orchestrator {
+func NewOrchestrator(db *gorm.DB, scanners ...Scanner) *Orchestrator {
 	return &Orchestrator{
 		scanners: scanners,
-		history:  make([]*ScanResult, 0),
+		db:       db,
 	}
 }
 
 func (o *Orchestrator) Start(ctx context.Context, target string) (string, error) {
-	// In a real system, this would spin up a workflow or DAG of scans.
-	// For now, we just start them all in parallel and return a combined ID.
-
 	var wg sync.WaitGroup
 	scanIDs := make([]string, len(o.scanners))
 	errors := make([]error, len(o.scanners))
@@ -42,43 +40,34 @@ func (o *Orchestrator) Start(ctx context.Context, target string) (string, error)
 	}
 	wg.Wait()
 
-	// Check for errors (simplified)
 	for _, err := range errors {
 		if err != nil {
 			return "", fmt.Errorf("one or more scanners failed to start: %v", err)
 		}
 	}
 
-	// Return the ID of the primary scanner (ZAP) for now, or a composite ID
 	id := scanIDs[0]
 
-	// Add to history
-	o.mu.Lock()
-	o.history = append(o.history, &ScanResult{
+	// Persist to DB
+	scan := &ScanResult{
 		ScanID: id,
 		Target: target,
 		Status: "queued",
-	})
-	o.mu.Unlock()
+	}
+	if err := o.db.Create(scan).Error; err != nil {
+		return "", fmt.Errorf("failed to create scan record: %v", err)
+	}
 
 	return id, nil
 }
 
 func (o *Orchestrator) GetStatus(ctx context.Context, scanID string) (string, int, error) {
-	// Simplified: just ask the first scanner
 	if len(o.scanners) > 0 {
 		status, progress, err := o.scanners[0].GetStatus(ctx, scanID)
 
-		// Update history if status changed
 		if err == nil {
-			o.mu.Lock()
-			for _, scan := range o.history {
-				if scan.ScanID == scanID {
-					scan.Status = status
-					break
-				}
-			}
-			o.mu.Unlock()
+			// Update status in DB
+			o.db.Model(&ScanResult{}).Where("scan_id = ?", scanID).Update("status", status)
 		}
 
 		return status, progress, err
@@ -87,14 +76,13 @@ func (o *Orchestrator) GetStatus(ctx context.Context, scanID string) (string, in
 }
 
 func (o *Orchestrator) GetResults(ctx context.Context, scanID string) (*ScanResult, error) {
-	// Aggregate results from all scanners
 	var combinedVulns []Vuln
 	var primaryStatus string = "completed"
 
 	for _, s := range o.scanners {
 		res, err := s.GetResults(ctx, scanID)
 		if err != nil {
-			continue // Skip failed scanners for now
+			continue
 		}
 		if res.Status == "running" {
 			primaryStatus = "running"
@@ -102,34 +90,32 @@ func (o *Orchestrator) GetResults(ctx context.Context, scanID string) (*ScanResu
 		combinedVulns = append(combinedVulns, res.Vulnerabilities...)
 	}
 
-	result := &ScanResult{
-		ScanID:          scanID,
-		Target:          "unknown", // Should retrieve from history
-		Status:          primaryStatus,
-		Vulnerabilities: combinedVulns,
+	// Update DB
+	var scan ScanResult
+	if err := o.db.First(&scan, "scan_id = ?", scanID).Error; err != nil {
+		return nil, err
 	}
 
-	// Update history with results
-	o.mu.Lock()
-	for _, scan := range o.history {
-		if scan.ScanID == scanID {
-			scan.Status = primaryStatus
-			scan.Vulnerabilities = combinedVulns
-			result.Target = scan.Target
-			break
-		}
-	}
-	o.mu.Unlock()
+	scan.Status = primaryStatus
+	scan.Vulnerabilities = combinedVulns
 
-	return result, nil
+	// Save scan and replace vulnerabilities
+	if err := o.db.Save(&scan).Error; err != nil {
+		return nil, err
+	}
+
+	// Explicitly replace associations to handle updates
+	if err := o.db.Model(&scan).Association("Vulnerabilities").Replace(combinedVulns); err != nil {
+		return nil, err
+	}
+
+	return &scan, nil
 }
 
 func (o *Orchestrator) GetHistory(ctx context.Context) ([]*ScanResult, error) {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-
-	// Return a copy to avoid race conditions
-	history := make([]*ScanResult, len(o.history))
-	copy(history, o.history)
+	var history []*ScanResult
+	if err := o.db.Preload("Vulnerabilities").Order("created_at desc").Find(&history).Error; err != nil {
+		return nil, err
+	}
 	return history, nil
 }

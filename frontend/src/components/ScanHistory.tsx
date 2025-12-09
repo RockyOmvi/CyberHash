@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ScanResult } from '../services/api';
-import { Clock, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, AlertTriangle, Loader2, Download } from 'lucide-react';
 
 export function ScanHistory() {
     const [history, setHistory] = useState<ScanResult[]>([]);
@@ -20,6 +20,22 @@ export function ScanHistory() {
         };
         fetchHistory();
     }, []);
+
+    const handleDownload = async (scanId: string) => {
+        try {
+            const blob = await api.downloadReport(scanId);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `report-${scanId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (err) {
+            console.error("Failed to download report", err);
+        }
+    };
 
     if (loading) {
         return (
@@ -44,8 +60,8 @@ export function ScanHistory() {
                 <div key={scan.scan_id} className="glass-surface p-4 rounded-lg border border-white/5 flex items-center justify-between hover:bg-white/5 transition-colors">
                     <div className="flex items-center gap-4">
                         <div className={`p-2 rounded-full ${scan.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' :
-                                scan.status === 'failed' ? 'bg-red-500/20 text-red-400' :
-                                    'bg-yellow-500/20 text-yellow-400'
+                            scan.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                'bg-yellow-500/20 text-yellow-400'
                             }`}>
                             {scan.status === 'completed' ? <CheckCircle size={20} /> :
                                 scan.status === 'failed' ? <XCircle size={20} /> :
@@ -65,6 +81,15 @@ export function ScanHistory() {
                             </div>
                             <p className="text-xs text-slate-500 capitalize">{scan.status}</p>
                         </div>
+                        {scan.status === 'completed' && (
+                            <button
+                                onClick={() => handleDownload(scan.scan_id)}
+                                className="p-2 hover:bg-white/10 rounded-full text-slate-400 hover:text-cyan-400 transition-colors"
+                                title="Download Report"
+                            >
+                                <Download size={18} />
+                            </button>
+                        )}
                     </div>
                 </div>
             ))}

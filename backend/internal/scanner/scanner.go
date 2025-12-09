@@ -1,18 +1,25 @@
 package scanner
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ScanResult represents the outcome of a security scan
 type ScanResult struct {
-	ScanID          string `json:"scan_id"`
-	Target          string `json:"target"`
-	Status          string `json:"status"`
-	Vulnerabilities []Vuln `json:"vulnerabilities"`
-	RawReportPath   string `json:"raw_report_path"`
+	ScanID          string    `json:"scan_id" gorm:"primaryKey"`
+	Target          string    `json:"target"`
+	Status          string    `json:"status"`
+	Vulnerabilities []Vuln    `json:"vulnerabilities" gorm:"foreignKey:ScanID"`
+	RawReportPath   string    `json:"raw_report_path"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Vuln represents a single security finding
 type Vuln struct {
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	ScanID      string `json:"scan_id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Severity    string `json:"severity"` // Critical, High, Medium, Low, Info

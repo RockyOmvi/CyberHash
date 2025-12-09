@@ -39,6 +39,25 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 			c.Set("user_id", claims["user_id"])
+			c.Set("role", claims["role"])
+		}
+
+		c.Next()
+	}
+}
+
+func RequireRole(requiredRole string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("role")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Role not found"})
+			return
+		}
+
+		if role != requiredRole {
+			// Simple check: exact match. In real app, might check hierarchy (admin > user)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+			return
 		}
 
 		c.Next()
