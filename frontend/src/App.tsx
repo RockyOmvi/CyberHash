@@ -1,340 +1,160 @@
-import { useState, useEffect } from 'react';
-import {
-    Activity,
-    Server,
-    ShieldAlert,
-    LogOut
-} from 'lucide-react';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Filler,
-    Legend,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import { ScanForm } from './components/ScanForm';
-import { VulnerabilityList } from './components/VulnerabilityList';
-import { RemediationPanel } from './components/RemediationPanel';
-import { ScanHistory } from './components/ScanHistory';
-import { NetworkGraph } from './components/NetworkGraph';
-import { api, Vulnerability } from './services/api';
-import { wsService, LogMessage } from './services/websocket';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import Layout from './components/Layout';
+
+// Pages
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import Dashboard from './pages/Dashboard';
+import MonitorPage from './pages/MonitorPage';
+import { ThreatHuntingPage } from './pages/ThreatHuntingPage';
+import { CompliancePage } from './pages/CompliancePage';
+import { CloudPage } from './pages/CloudPage';
+import { IntegrationsPage } from './pages/IntegrationsPage';
+import { PlaybooksPage } from './pages/PlaybooksPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { UEBAPage } from './pages/UEBAPage';
+import { HoneypotPage } from './pages/HoneypotPage';
+import { GatewayPage } from './pages/GatewayPage';
+import { ContainerPage } from './pages/ContainerPage';
+import { IaCPage } from './pages/IaCPage';
+import { PhishingPage } from './pages/PhishingPage';
+import { HardwarePage } from './pages/HardwarePage';
+import { IdentityPage } from './pages/IdentityPage';
+import { APMPage } from './pages/APMPage';
+import { EphemeralPage } from './pages/EphemeralPage';
+import { DeepfakePage } from './pages/DeepfakePage';
+import { CodeContextPage } from './pages/CodeContextPage';
+import { SecretsPage } from './pages/SecretsPage';
+import { ZKPPage } from './pages/ZKPPage';
+import { InsiderPage } from './pages/InsiderPage';
+import { CARTPage } from './pages/CARTPage';
+import { RBIPage } from './pages/RBIPage';
+import { SovereignPage } from './pages/SovereignPage';
+import { QuantumPage } from './pages/QuantumPage';
+import { APTPage } from './pages/APTPage';
+import { SocialEngPage } from './pages/SocialEngPage';
+import { LotLPage } from './pages/LotLPage';
+import { RansomwarePage } from './pages/RansomwarePage';
+import { ExfilPage } from './pages/ExfilPage';
+import { ADPage } from './pages/ADPage';
+import { ZeroDayPage } from './pages/ZeroDayPage';
+import { EBPFPage } from './pages/EBPFPage';
+import { ServerlessPage } from './pages/ServerlessPage';
+import { CIEMPage } from './pages/CIEMPage';
+import { DriftPage } from './pages/DriftPage';
+import { AdmissionPage } from './pages/AdmissionPage';
+import { RASPPage } from './pages/RASPPage';
+import { SchemaPage } from './pages/SchemaPage';
+import { BotPage } from './pages/BotPage';
+import { SBOMPage } from './pages/SBOMPage';
+import { DSPMPage } from './pages/DSPMPage';
+import { EASMPage } from './pages/EASMPage';
+import { IntelPage } from './pages/IntelPage';
+import { DataLakePage } from './pages/DataLakePage';
+import { JITPage } from './pages/JITPage';
+import { SAAnomalyPage } from './pages/SAAnomalyPage';
+import { EvidencePage } from './pages/EvidencePage';
+import { TPRMPage } from './pages/TPRMPage';
+import { PolicyPage } from './pages/PolicyPage';
+import { LLMFirewallPage } from './pages/LLMFirewallPage';
+import { IoTSlicingPage } from './pages/IoTSlicingPage';
+import { DigitalTwinPage } from './pages/DigitalTwinPage';
+import { GodModePage } from './pages/GodModePage';
+import { ScansPage } from './pages/ScansPage';
+import { VulnerabilitiesPage } from './pages/VulnerabilitiesPage';
+import { ScanHistory } from './components/ScanHistory';
 
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Filler,
-    Legend
-);
-
-const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: {
-        x: { display: false },
-        y: { display: false }
-    },
-    animation: { duration: 2000 }
-};
-
-const chartData = {
-    labels: ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'],
-    datasets: [{
-        label: 'Requests',
-        data: [45, 52, 49, 62, 58, 65, 75, 68, 72, 85, 80, 92],
-        borderColor: '#22d3ee',
-        backgroundColor: (context: any) => {
-            const ctx = context.chart.ctx;
-            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-            gradient.addColorStop(0, 'rgba(34, 211, 238, 0.4)');
-            gradient.addColorStop(1, 'rgba(34, 211, 238, 0)');
-            return gradient;
-        },
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true,
-        pointRadius: 0,
-        pointHoverRadius: 4
-    }]
-};
-
-function Dashboard() {
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'history'>('dashboard');
-    const [currentScanId, setCurrentScanId] = useState<string | null>(null);
-    const [scanStatus, setScanStatus] = useState<string>('');
-    const [scanResults, setScanResults] = useState<Vulnerability[]>([]);
-    const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
-    const [logs, setLogs] = useState<LogMessage[]>([]);
-    const { user, logout } = useAuth();
-
-    // Initialize WebSocket
-    useEffect(() => {
-        wsService.connect();
-        const unsubscribe = wsService.subscribe((msg) => {
-            setLogs(prev => [msg, ...prev].slice(0, 50)); // Keep last 50 logs
-        });
-        return () => unsubscribe();
-    }, []);
-
-    // Poll for scan status
-    useEffect(() => {
-        let interval: any;
-        if (currentScanId && scanStatus !== 'completed' && scanStatus !== 'failed') {
-            interval = setInterval(async () => {
-                try {
-                    const data = await api.getScanStatus(currentScanId);
-                    setScanStatus(data.status);
-                    if (data.status === 'completed' && data.results) {
-                        setScanResults(data.results.vulnerabilities || []);
-                    }
-                } catch (err) {
-                    console.error("Polling error", err);
-                }
-            }, 2000);
-        }
-        return () => clearInterval(interval);
-    }, [currentScanId, scanStatus]);
-
-    const handleScanStarted = (id: string) => {
-        setCurrentScanId(id);
-        setScanStatus('queued');
-        setActiveTab('scan');
-    };
-
-    return (
-        <div className="text-slate-300 antialiased selection:bg-blue-500/30 selection:text-blue-200 font-sans bg-[#020204] min-h-screen relative overflow-x-hidden">
-
-            {/* Background Effects */}
-            <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
-                <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[120%] h-[800px] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-[#020204]/80 to-transparent blur-[80px]"></div>
-            </div>
-
-            {/* Navigation */}
-            <nav className="fixed top-0 z-50 w-full border-b border-white/5 bg-[#030508]/60 backdrop-blur-xl">
-                <div className="flex max-w-7xl mx-auto px-6 py-4 items-center justify-between">
-                    <div className="flex items-center gap-8">
-                        <a href="#" className="flex items-center gap-2 group">
-                            <div className="flex text-xs font-bold text-black bg-gradient-to-br from-cyan-400 to-blue-600 w-6 h-6 rounded items-center justify-center">S</div>
-                            <span className="text-sm font-semibold text-white tracking-tight">SENTRIX</span>
-                        </a>
-                        <div className="hidden md:flex items-center gap-1">
-                            <button
-                                onClick={() => setActiveTab('dashboard')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                Dashboard
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('scan')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'scan' ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                Scans
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('history')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'history' ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                History
-                            </button>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/40 border border-cyan-500/20">
-                            <div className={`w-1.5 h-1.5 rounded-full ${scanStatus === 'running' ? 'bg-yellow-400 animate-pulse' : 'bg-cyan-400'}`}></div>
-                            <span className="text-[10px] font-semibold text-cyan-300 tracking-wide">
-                                {scanStatus === 'running' ? 'SCANNING...' : 'SYSTEM READY'}
-                            </span>
-                        </div>
-                        <div className="h-6 w-px bg-white/10 mx-2"></div>
-                        <div className="flex items-center gap-3">
-                            <span className="text-sm text-slate-400 hidden sm:block">{user?.name}</span>
-                            <button onClick={logout} className="text-slate-400 hover:text-white transition-colors" title="Logout">
-                                <LogOut size={18} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-
-            <main className="relative pt-24 pb-12 px-6 max-w-7xl mx-auto">
-
-                {activeTab === 'dashboard' && (
-                    <div className="space-y-6">
-                        {/* Stats Row */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="glass-surface p-6 rounded-xl border border-white/10">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <p className="text-xs text-slate-400 uppercase tracking-wider">Active Threats</p>
-                                        <h3 className="text-3xl font-bold text-white mt-1">{scanResults.length > 0 ? scanResults.length : 0}</h3>
-                                    </div>
-                                    <ShieldAlert className="text-red-400" />
-                                </div>
-                                <div className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
-                                    <div className="bg-red-500 h-full w-[45%]"></div>
-                                </div>
-                            </div>
-                            <div className="glass-surface p-6 rounded-xl border border-white/10">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <p className="text-xs text-slate-400 uppercase tracking-wider">Scans Today</p>
-                                        <h3 className="text-3xl font-bold text-white mt-1">12</h3>
-                                    </div>
-                                    <Activity className="text-cyan-400" />
-                                </div>
-                                <div className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
-                                    <div className="bg-cyan-500 h-full w-[70%]"></div>
-                                </div>
-                            </div>
-                            <div className="glass-surface p-6 rounded-xl border border-white/10">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <p className="text-xs text-slate-400 uppercase tracking-wider">System Health</p>
-                                        <h3 className="text-3xl font-bold text-white mt-1">98%</h3>
-                                    </div>
-                                    <Server className="text-emerald-400" />
-                                </div>
-                                <div className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
-                                    <div className="bg-emerald-500 h-full w-[98%]"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Chart Area */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="glass-surface p-6 rounded-xl border border-white/10 h-[300px]">
-                                <h3 className="text-sm font-semibold text-white mb-4">Traffic Analysis</h3>
-                                <div className="h-[220px] w-full">
-                                    <Line options={chartOptions} data={chartData} />
-                                </div>
-                            </div>
-                            <div className="glass-surface p-6 rounded-xl border border-white/10 h-[300px]">
-                                <h3 className="text-sm font-semibold text-white mb-4">Attack Surface Map</h3>
-                                <NetworkGraph />
-                            </div>
-                        </div>
-
-                        {/* Logs/Events */}
-                        <div className="glass-surface border border-white/5 rounded-xl flex flex-col h-[300px]">
-                            <div className="p-4 border-b border-white/5 flex justify-between items-center">
-                                <h4 className="text-xs font-semibold text-white">Live Event Log</h4>
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                                </span>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-3 space-y-2 font-mono text-[10px] scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                                {logs.length === 0 ? (
-                                    <p className="text-slate-600 text-center mt-10">Waiting for events...</p>
-                                ) : (
-                                    logs.map((log, idx) => (
-                                        <div key={idx} className="flex gap-2 items-center text-slate-400 p-1.5 hover:bg-white/5 rounded cursor-pointer group">
-                                            <span className="text-slate-600">{log.timestamp}</span>
-                                            <span className={`${log.level === 'ERROR' ? 'text-red-400' : log.level === 'SUCCESS' ? 'text-emerald-400' : 'text-cyan-400'}`}>{log.level}</span>
-                                            <span className="group-hover:text-white transition-colors">{log.message}</span>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'scan' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-1 space-y-6">
-                            <ScanForm onScanStarted={handleScanStarted} />
-
-                            {/* Scan Status Card */}
-                            {currentScanId && (
-                                <div className="glass-surface p-6 rounded-xl border border-white/10">
-                                    <h3 className="text-sm font-semibold text-white mb-4">Current Scan Status</h3>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-slate-400">ID</span>
-                                            <span className="font-mono text-cyan-400">{currentScanId.substring(0, 8)}...</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-slate-400">Status</span>
-                                            <span className={`capitalize ${scanStatus === 'completed' ? 'text-emerald-400' :
-                                                scanStatus === 'failed' ? 'text-red-400' : 'text-yellow-400'
-                                                }`}>{scanStatus}</span>
-                                        </div>
-                                        {scanStatus === 'running' && (
-                                            <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden animate-pulse">
-                                                <div className="bg-cyan-500 h-full w-[60%] animate-flow"></div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="lg:col-span-2">
-                            <div className="glass-surface p-6 rounded-xl border border-white/10 min-h-[500px]">
-                                <h3 className="text-lg font-semibold text-white mb-6">Scan Results</h3>
-                                <VulnerabilityList
-                                    vulnerabilities={scanResults}
-                                    onRemediate={setSelectedVuln}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'history' && (
-                    <div className="glass-surface p-8 rounded-xl border border-white/10">
-                        <h3 className="text-lg font-semibold text-white mb-6">Scan History</h3>
-                        <ScanHistory />
-                    </div>
-                )}
-
-            </main>
-
-            {/* Remediation Modal */}
-            {selectedVuln && (
-                <RemediationPanel
-                    vulnerability={selectedVuln}
-                    onClose={() => setSelectedVuln(null)}
-                />
-            )}
-
-        </div>
-    );
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+    const { isAuthenticated } = useAuth();
+    if (!isAuthenticated) {
+        return <Navigate to="/login" />;
+    }
+    return <Layout>{children}</Layout>;
 }
 
 function AppContent() {
     const { isAuthenticated } = useAuth();
-    const [isRegistering, setIsRegistering] = useState(false);
+    return (
+        <Routes>
+            <Route path="/login" element={!isAuthenticated ? <LoginPage onRegisterClick={() => { }} /> : <Navigate to="/" />} />
+            <Route path="/register" element={!isAuthenticated ? <RegisterPage onLoginClick={() => { }} /> : <Navigate to="/" />} />
 
-    if (isAuthenticated) {
-        return <Dashboard />;
-    }
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/threat-hunting" element={<ProtectedRoute><ThreatHuntingPage /></ProtectedRoute>} />
+            <Route path="/scans" element={<ProtectedRoute><ScansPage /></ProtectedRoute>} />
+            <Route path="/vulnerabilities" element={<ProtectedRoute><VulnerabilitiesPage /></ProtectedRoute>} />
+            <Route path="/history" element={<ProtectedRoute><ScanHistory /></ProtectedRoute>} />
+            <Route path="/monitor" element={<ProtectedRoute><MonitorPage /></ProtectedRoute>} />
+            <Route path="/compliance" element={<ProtectedRoute><CompliancePage /></ProtectedRoute>} />
+            <Route path="/cloud" element={<ProtectedRoute><CloudPage /></ProtectedRoute>} />
+            <Route path="/integrations" element={<ProtectedRoute><IntegrationsPage /></ProtectedRoute>} />
+            <Route path="/playbooks" element={<ProtectedRoute><PlaybooksPage /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
+            <Route path="/ueba" element={<ProtectedRoute><UEBAPage /></ProtectedRoute>} />
+            <Route path="/honeypot" element={<ProtectedRoute><HoneypotPage /></ProtectedRoute>} />
+            <Route path="/gateway" element={<ProtectedRoute><GatewayPage /></ProtectedRoute>} />
+            <Route path="/containers" element={<ProtectedRoute><ContainerPage /></ProtectedRoute>} />
+            <Route path="/iac" element={<ProtectedRoute><IaCPage /></ProtectedRoute>} />
+            <Route path="/phishing" element={<ProtectedRoute><PhishingPage /></ProtectedRoute>} />
+            <Route path="/hardware" element={<ProtectedRoute><HardwarePage /></ProtectedRoute>} />
+            <Route path="/identity" element={<ProtectedRoute><IdentityPage /></ProtectedRoute>} />
+            <Route path="/apm" element={<ProtectedRoute><APMPage /></ProtectedRoute>} />
+            <Route path="/ephemeral" element={<ProtectedRoute><EphemeralPage /></ProtectedRoute>} />
+            <Route path="/deepfake" element={<ProtectedRoute><DeepfakePage /></ProtectedRoute>} />
+            <Route path="/code-context" element={<ProtectedRoute><CodeContextPage /></ProtectedRoute>} />
+            <Route path="/secrets" element={<ProtectedRoute><SecretsPage /></ProtectedRoute>} />
+            <Route path="/zkp" element={<ProtectedRoute><ZKPPage /></ProtectedRoute>} />
+            <Route path="/insider" element={<ProtectedRoute><InsiderPage /></ProtectedRoute>} />
+            <Route path="/cart" element={<ProtectedRoute><CARTPage /></ProtectedRoute>} />
+            <Route path="/rbi" element={<ProtectedRoute><RBIPage /></ProtectedRoute>} />
+            <Route path="/sovereign" element={<ProtectedRoute><SovereignPage /></ProtectedRoute>} />
+            <Route path="/quantum" element={<ProtectedRoute><QuantumPage /></ProtectedRoute>} />
+            <Route path="/redhat/apt" element={<ProtectedRoute><APTPage /></ProtectedRoute>} />
+            <Route path="/redhat/social" element={<ProtectedRoute><SocialEngPage /></ProtectedRoute>} />
+            <Route path="/redhat/lotl" element={<ProtectedRoute><LotLPage /></ProtectedRoute>} />
+            <Route path="/redhat/ransomware" element={<ProtectedRoute><RansomwarePage /></ProtectedRoute>} />
+            <Route path="/redhat/exfil" element={<ProtectedRoute><ExfilPage /></ProtectedRoute>} />
+            <Route path="/redhat/ad" element={<ProtectedRoute><ADPage /></ProtectedRoute>} />
+            <Route path="/redhat/zeroday" element={<ProtectedRoute><ZeroDayPage /></ProtectedRoute>} />
+            <Route path="/redhat/ebpf" element={<ProtectedRoute><EBPFPage /></ProtectedRoute>} />
+            <Route path="/redhat/serverless" element={<ProtectedRoute><ServerlessPage /></ProtectedRoute>} />
+            <Route path="/redhat/ciem" element={<ProtectedRoute><CIEMPage /></ProtectedRoute>} />
+            <Route path="/redhat/drift" element={<ProtectedRoute><DriftPage /></ProtectedRoute>} />
+            <Route path="/redhat/admission" element={<ProtectedRoute><AdmissionPage /></ProtectedRoute>} />
+            <Route path="/redhat/rasp" element={<ProtectedRoute><RASPPage /></ProtectedRoute>} />
+            <Route path="/redhat/schema" element={<ProtectedRoute><SchemaPage /></ProtectedRoute>} />
+            <Route path="/redhat/bot" element={<ProtectedRoute><BotPage /></ProtectedRoute>} />
+            <Route path="/redhat/sbom" element={<ProtectedRoute><SBOMPage /></ProtectedRoute>} />
+            <Route path="/redhat/dspm" element={<ProtectedRoute><DSPMPage /></ProtectedRoute>} />
+            <Route path="/redhat/easm" element={<ProtectedRoute><EASMPage /></ProtectedRoute>} />
+            <Route path="/redhat/intel" element={<ProtectedRoute><IntelPage /></ProtectedRoute>} />
+            <Route path="/redhat/datalake" element={<ProtectedRoute><DataLakePage /></ProtectedRoute>} />
+            <Route path="/redhat/jit" element={<ProtectedRoute><JITPage /></ProtectedRoute>} />
+            <Route path="/redhat/sa-anomaly" element={<ProtectedRoute><SAAnomalyPage /></ProtectedRoute>} />
+            <Route path="/redhat/evidence" element={<ProtectedRoute><EvidencePage /></ProtectedRoute>} />
+            <Route path="/redhat/tprm" element={<ProtectedRoute><TPRMPage /></ProtectedRoute>} />
+            <Route path="/redhat/policy" element={<ProtectedRoute><PolicyPage /></ProtectedRoute>} />
+            <Route path="/redhat/llm-firewall" element={<ProtectedRoute><LLMFirewallPage /></ProtectedRoute>} />
+            <Route path="/redhat/quantum" element={<ProtectedRoute><QuantumPage /></ProtectedRoute>} />
+            <Route path="/redhat/iot-slicing" element={<ProtectedRoute><IoTSlicingPage /></ProtectedRoute>} />
+            <Route path="/redhat/digital-twin" element={<ProtectedRoute><DigitalTwinPage /></ProtectedRoute>} />
+            <Route path="/redhat/god-mode" element={<ProtectedRoute><GodModePage /></ProtectedRoute>} />
 
-    if (isRegistering) {
-        return <RegisterPage onLoginClick={() => setIsRegistering(false)} />;
-    }
-
-    return <LoginPage onRegisterClick={() => setIsRegistering(true)} />;
+            <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+    );
 }
 
 export default function App() {
     return (
-        <AuthProvider>
-            <AppContent />
-        </AuthProvider>
+        <ErrorBoundary>
+            <AuthProvider>
+                <Router>
+                    <AppContent />
+                </Router>
+            </AuthProvider>
+        </ErrorBoundary>
     );
 }

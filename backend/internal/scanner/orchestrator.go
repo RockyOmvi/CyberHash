@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cybershield-ai/core/internal/compliance"
 	"gorm.io/gorm"
 )
 
@@ -87,6 +88,18 @@ func (o *Orchestrator) GetResults(ctx context.Context, scanID string) (*ScanResu
 		if res.Status == "running" {
 			primaryStatus = "running"
 		}
+
+		// Map compliance tags for each vulnerability
+		for i := range res.Vulnerabilities {
+			v := &res.Vulnerabilities[i]
+			mappings := compliance.MapVulnerability(v.Category)
+			var tags []string
+			for _, m := range mappings {
+				tags = append(tags, fmt.Sprintf("%s: %s", m.Standard, m.Control.ID))
+			}
+			v.Compliance = tags
+		}
+
 		combinedVulns = append(combinedVulns, res.Vulnerabilities...)
 	}
 

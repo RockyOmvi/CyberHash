@@ -11,7 +11,7 @@ import (
 
 // RemediationEngine handles generating fixes for vulnerabilities
 type RemediationEngine struct {
-	client *genai.Client
+	Client *genai.Client // Exported to share with ChatEngine
 	model  *genai.GenerativeModel
 }
 
@@ -30,14 +30,14 @@ func NewRemediationEngine(apiKey string) *RemediationEngine {
 
 	model := client.GenerativeModel("gemini-1.5-flash") // Use a cost-effective model
 	return &RemediationEngine{
-		client: client,
+		Client: client,
 		model:  model,
 	}
 }
 
 // GenerateFix creates a context-aware remediation plan
 func (e *RemediationEngine) GenerateFix(ctx context.Context, vulnTitle, vulnDesc, techStack string) (string, error) {
-	if e.client == nil {
+	if e.Client == nil {
 		return "", fmt.Errorf("gemini client not initialized")
 	}
 
@@ -73,6 +73,41 @@ Explain the fix in 2 sentences.
 	return sb.String(), nil
 }
 
+// AnalyzeDependencies checks for vulnerabilities in dependency files
+func (e *RemediationEngine) AnalyzeDependencies(ctx context.Context, filename, content string) (string, error) {
+	if e.Client == nil {
+		return "", fmt.Errorf("gemini client not initialized")
+	}
+
+	prompt := fmt.Sprintf(`
+You are a Supply Chain Security Expert.
+Analyze the following %s file for security vulnerabilities, outdated packages, and license issues.
+Content:
+%s
+
+List the top 3 critical issues found. If none, say "No critical issues found".
+Format as a bulleted list.
+`, filename, content)
+
+	resp, err := e.model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("gemini API error: %v", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no response from gemini")
+	}
+
+	var sb strings.Builder
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			sb.WriteString(string(txt))
+		}
+	}
+
+	return sb.String(), nil
+}
+
 // AnalyzeCode performs SAST-like analysis on a snippet (Stub)
 func (e *RemediationEngine) AnalyzeCode(codeSnippet string) ([]string, error) {
 	if strings.Contains(codeSnippet, "eval(") {
@@ -82,7 +117,7 @@ func (e *RemediationEngine) AnalyzeCode(codeSnippet string) ([]string, error) {
 }
 
 func (e *RemediationEngine) Close() {
-	if e.client != nil {
-		e.client.Close()
+	if e.Client != nil {
+		e.Client.Close()
 	}
 }

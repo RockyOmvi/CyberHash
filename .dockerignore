@@ -1,0 +1,9 @@
+node_modules
+.git
+.vscode
+dist
+tmp
+.env
+backend/cybershield.db
+backend/main.exe
+backend/main

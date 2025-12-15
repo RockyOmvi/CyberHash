@@ -3,13 +3,21 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("super-secret-key") // Should match auth.go
+var jwtSecret = []byte(getEnv("JWT_SECRET", "super-secret-key"))
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

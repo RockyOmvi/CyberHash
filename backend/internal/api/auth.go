@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("super-secret-key") // In production, use env var
+var jwtSecret = []byte(getEnv("JWT_SECRET", "super-secret-key"))
 
 type AuthRequest struct {
 	Email    string `json:"email" binding:"required,email"`

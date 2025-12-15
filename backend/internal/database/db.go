@@ -6,9 +6,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/cybershield-ai/core/internal/models"
 )
 
 var DB *gorm.DB
@@ -38,7 +41,31 @@ func InitDB() (*gorm.DB, error) {
 		Logger: newLogger,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		fmt.Println("WARNING: Failed to connect to Postgres, falling back to SQLite:", err)
+		DB, err = gorm.Open(sqlite.Open("cybershield.db"), &gorm.Config{
+			Logger: newLogger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to database (postgres and sqlite): %w", err)
+		}
+	}
+
+	// Auto-migrate models
+	err = DB.AutoMigrate(
+		&models.Vulnerability{},
+		&models.SBOMComponent{},
+		&models.CloudResource{},
+		&models.SimulationEvent{},
+		&models.ComplianceStandard{},
+		&models.PhishingTemplate{},
+		&models.HoneypotNode{},
+		&models.HardwareTelemetry{},
+		&models.UserBehavior{},
+		&models.GatewayRule{},
+		&models.IntegrationConfig{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to auto-migrate database: %w", err)
 	}
 
 	return DB, nil

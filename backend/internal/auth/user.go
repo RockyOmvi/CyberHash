@@ -68,3 +68,15 @@ func (s *UserStore) Authenticate(email, password string) (*User, error) {
 
 	return &user, nil
 }
+
+func (s *UserStore) GetUserByUsername(username string) (*User, error) {
+	var user User
+	// Assuming username is email for now as per loginUser implementation
+	if err := s.db.Where("email = ?", username).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+	return &user, nil
+}
