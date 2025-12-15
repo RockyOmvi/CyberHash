@@ -133,7 +133,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <div className="flex h-16 items-center justify-between px-6 border-b border-white/10">
                     <Link to="/" className="flex items-center gap-2 font-bold text-xl tracking-wider text-blue-500">
                         <Shield className="h-8 w-8" />
-                        <span>CYBERSHIELD</span>
+                        <div className="flex flex-col">
+                            <span>CYBERSHIELD</span>
+                            <span className="text-[10px] font-normal text-gray-400 -mt-1">by Omvi</span>
+                        </div>
                     </Link>
                     <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-400 hover:text-white">
                         <X className="h-6 w-6" />

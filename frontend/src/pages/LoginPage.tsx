@@ -99,6 +99,7 @@ export function LoginPage({ onRegisterClick }: { onRegisterClick: () => void }) 
                             Create one
                         </button>
                     </p>
+                    <p className="text-slate-600 text-xs mt-4">Powered by Omvi</p>
                 </div>
             </div>
         </div>

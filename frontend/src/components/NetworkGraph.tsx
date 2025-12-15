@@ -14,34 +14,23 @@ export function NetworkGraph() {
         }
     }, []);
 
-    // Mock Data representing an attack surface
-    const data = {
-        nodes: [
-            { id: 'Internet', group: 1, val: 20 },
-            { id: 'Load Balancer', group: 2, val: 10 },
-            { id: 'Web Server 1', group: 3, val: 5 },
-            { id: 'Web Server 2', group: 3, val: 5 },
-            { id: 'API Gateway', group: 2, val: 10 },
-            { id: 'Auth Service', group: 4, val: 5 },
-            { id: 'User DB', group: 5, val: 8 },
-            { id: 'Payment Service', group: 4, val: 5 },
-            { id: 'Payment DB', group: 5, val: 8 },
-            { id: 'Admin Portal', group: 3, val: 5 },
-        ],
-        links: [
-            { source: 'Internet', target: 'Load Balancer' },
-            { source: 'Load Balancer', target: 'Web Server 1' },
-            { source: 'Load Balancer', target: 'Web Server 2' },
-            { source: 'Internet', target: 'API Gateway' },
-            { source: 'API Gateway', target: 'Auth Service' },
-            { source: 'Auth Service', target: 'User DB' },
-            { source: 'API Gateway', target: 'Payment Service' },
-            { source: 'Payment Service', target: 'Payment DB' },
-            { source: 'Web Server 1', target: 'API Gateway' },
-            { source: 'Web Server 2', target: 'API Gateway' },
-            { source: 'Internet', target: 'Admin Portal' }, // Potential vulnerability
-        ]
-    };
+    const [data, setData] = useState({ nodes: [], links: [] });
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                // Fetch real data from the backend APM endpoint
+                const response = await fetch('/api/v1/apm/graph');
+                if (response.ok) {
+                    const graphData = await response.json();
+                    setData(graphData);
+                }
+            } catch (error) {
+                console.error("Failed to fetch network graph:", error);
+            }
+        };
+        fetchData();
+    }, []);
 
     return (
         <div ref={containerRef} className="w-full h-full min-h-[300px]">
