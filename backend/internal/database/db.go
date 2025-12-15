@@ -36,17 +36,21 @@ func InitDB() (*gorm.DB, error) {
 		},
 	)
 
+	driver := getEnv("DB_DRIVER", "sqlite")
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: newLogger,
-	})
-	if err != nil {
-		fmt.Println("WARNING: Failed to connect to Postgres, falling back to SQLite:", err)
-		DB, err = gorm.Open(sqlite.Open("cybershield.db"), &gorm.Config{
-			Logger: newLogger,
-		})
+
+	if driver == "postgres" {
+		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: newLogger})
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to database (postgres and sqlite): %w", err)
+			return nil, fmt.Errorf("failed to connect to Postgres (DB_DRIVER=postgres): %w", err)
+		}
+	} else {
+		// Default to SQLite for local dev if not explicitly set to postgres
+		fmt.Println("Using SQLite (DB_DRIVER not set to postgres)")
+		dbName := getEnv("DB_NAME", "cybershield.db")
+		DB, err = gorm.Open(sqlite.Open(dbName), &gorm.Config{Logger: newLogger})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to SQLite: %w", err)
 		}
 	}
 

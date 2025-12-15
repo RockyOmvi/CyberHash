@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -36,6 +37,7 @@ import (
 	"github.com/cybershield-ai/core/internal/ueba"
 	"github.com/cybershield-ai/core/internal/voice"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/time/rate"
 )
 
@@ -104,9 +106,10 @@ type Server struct {
 	digitalTwinEngine  *redhat.DigitalTwinEngine
 	godModeEngine      *redhat.GodModeEngine
 	simulationEngine   *simulation.SimulationEngine
+	secretsManager     secrets.Manager
 }
 
-func NewServer() *Server {
+func NewServer(secretsManager secrets.Manager) *Server {
 	// Initialize Database
 	db, err := database.InitDB()
 	if err != nil {
@@ -125,19 +128,19 @@ func NewServer() *Server {
 	go wsManager.HandleMessages()
 
 	// Initialize AI Engines
-	apiKey := getEnv("GEMINI_API_KEY", "")
+	apiKey, _ := secretsManager.GetSecret("GEMINI_API_KEY")
 	if apiKey == "" {
-		fmt.Println("WARNING: GEMINI_API_KEY is not set. AI features will be disabled.")
+		slog.Warn("GEMINI_API_KEY is not set. AI features will be disabled.")
 	} else {
-		fmt.Println("INFO: GEMINI_API_KEY is set.")
+		slog.Info("GEMINI_API_KEY is set.")
 	}
 	aiEngine := ai.NewRemediationEngine(apiKey)
 	var chatEngine *ai.ChatEngine
 	if aiEngine != nil && aiEngine.Client != nil {
 		chatEngine = ai.NewChatEngine(aiEngine.Client, db)
-		fmt.Println("INFO: ChatEngine initialized successfully.")
+		slog.Info("ChatEngine initialized successfully.")
 	} else {
-		fmt.Println("ERROR: Failed to initialize ChatEngine.")
+		slog.Error("Failed to initialize ChatEngine.")
 	}
 
 	// Initialize Scanners
@@ -159,11 +162,13 @@ func NewServer() *Server {
 	iacScanner := iac.NewIaCScanner()
 
 	// Initialize AWS Scanner (Real)
-	awsRegion := os.Getenv("AWS_REGION")
+	awsRegion, _ := secretsManager.GetSecret("AWS_REGION")
 	if awsRegion == "" {
 		awsRegion = "us-east-1"
 	}
-	awsScanner := scanner.NewAWSScanner(awsRegion, os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
+	awsAccessKey, _ := secretsManager.GetSecret("AWS_ACCESS_KEY_ID")
+	awsSecretKey, _ := secretsManager.GetSecret("AWS_SECRET_ACCESS_KEY")
+	awsScanner := scanner.NewAWSScanner(awsRegion, awsAccessKey, awsSecretKey)
 
 	cloudManager := cloud.NewCloudManager(db, awsScanner)
 	integrationManager := integrations.NewIntegrationManager(db)
@@ -284,6 +289,7 @@ func NewServer() *Server {
 		digitalTwinEngine:  digitalTwinEngine,
 		godModeEngine:      godModeEngine,
 		simulationEngine:   simEngine,
+		secretsManager:     secretsManager,
 	}
 
 	simEngine.Start()
@@ -298,10 +304,14 @@ func (s *Server) RegisterRoutes() {
 	s.router.Use(middleware.CORSMiddleware())
 	s.router.Use(middleware.RateLimitMiddleware(rate.Limit(10), 20)) // 10 req/s, burst 20
 	s.router.Use(middleware.SecurityHeaders())
+	s.router.Use(middleware.MetricsMiddleware())
 	s.router.Use(middleware.SecurityMiddleware(s.monitorStore))
 
 	// WebSocket
 	s.router.GET("/ws", s.serveWs)
+
+	// Metrics
+	s.router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	v1 := s.router.Group("/api/v1")
 	{
@@ -311,6 +321,7 @@ func (s *Server) RegisterRoutes() {
 
 		// Public Routes (Webhooks)
 		v1.POST("/webhooks/stripe", s.handleStripeWebhook)
+		v1.POST("/webhooks/aws/cloudtrail", s.handleAWSWebhook)
 
 		// Protected Routes
 		authenticated := v1.Group("/")
@@ -338,6 +349,7 @@ func (s *Server) RegisterRoutes() {
 
 			// Remediation Routes
 			authenticated.POST("/remediate/fix", s.generateFix)
+			authenticated.POST("/remediate/pr", s.createFixPR)
 
 			// Chat Routes
 			authenticated.POST("/chat", s.handleChat)
@@ -490,7 +502,7 @@ func (s *Server) startScan(c *gin.Context) {
 
 	scanID, err := s.orchestrator.Start(c.Request.Context(), req.Target)
 	if err != nil {
-		fmt.Printf("ERROR: Scan start failed: %v\n", err)
+		slog.Error("Scan start failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to start scan: %v", err)})
 		return
 	}
@@ -552,7 +564,11 @@ func (s *Server) getScheduledScans(c *gin.Context) {
 }
 
 func (s *Server) deleteScheduledScan(c *gin.Context) {
-	// Implementation omitted for brevity
+	id := c.Param("id")
+	if err := s.scheduler.RemoveSchedule(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete schedule"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Scheduled scan deleted"})
 }
 
@@ -574,7 +590,7 @@ func (s *Server) generateFix(c *gin.Context) {
 
 	fix, err := s.aiEngine.GenerateFix(c.Request.Context(), req.Title, req.Description, req.TechStack)
 	if err != nil {
-		fmt.Printf("AI Generation Error: %v\n", err)
+		slog.Error("AI Generation Error", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate fix"})
 		return
 	}
@@ -582,6 +598,33 @@ func (s *Server) generateFix(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"fix": fix,
 	})
+}
+
+func (s *Server) createFixPR(c *gin.Context) {
+	var req struct {
+		Repo   string `json:"repo"`
+		Branch string `json:"branch"`
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.aiEngine == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI Engine not initialized"})
+		return
+	}
+
+	prURL, err := s.aiEngine.CreateFixPR(c.Request.Context(), req.Repo, req.Branch, req.Title, req.Body)
+	if err != nil {
+		slog.Error("PR Creation Error", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create PR"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"pr_url": prURL})
 }
 
 func (s *Server) handleChat(c *gin.Context) {
@@ -598,7 +641,7 @@ func (s *Server) handleChat(c *gin.Context) {
 
 	response, err := s.chatEngine.ProcessQuery(c.Request.Context(), req)
 	if err != nil {
-		fmt.Printf("ERROR: Chat processing failed: %v\n", err)
+		slog.Error("Chat processing failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to process chat query: %v", err)})
 		return
 	}
@@ -748,7 +791,12 @@ func (s *Server) generateCustomReport(c *gin.Context) {
 }
 
 func (s *Server) downloadReport(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "Report download not implemented yet"})
+	// Mock PDF generation for download
+	pdfBytes := []byte("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n...")
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename=report.pdf")
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }
 
 func (s *Server) getAnomalies(c *gin.Context) {
@@ -1055,4 +1103,26 @@ func (s *Server) getGodTimeline(c *gin.Context) {
 
 func (s *Server) getEDREvents(c *gin.Context) {
 	c.JSON(http.StatusOK, s.edrEngine.GetEvents())
+}
+func (s *Server) handleAWSWebhook(c *gin.Context) {
+	var event scanner.CloudTrailEvent
+	if err := c.ShouldBindJSON(&event); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	alert, err := s.awsScanner.HandleCloudTrailEvent(event)
+	if err != nil {
+		slog.Error("Failed to handle AWS event", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal processing error"})
+		return
+	}
+
+	if alert != "" {
+		slog.Warn("AWS Security Alert", "alert", alert)
+		// In a real system, we'd trigger an incident or notification here
+		// s.notificationManager.Send(alert)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "processed", "alert": alert})
 }

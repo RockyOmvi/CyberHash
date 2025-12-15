@@ -122,3 +122,27 @@ func (a *AWSScanner) GetHistory(ctx context.Context) ([]*ScanResult, error) {
 	}
 	return history, nil
 }
+
+type CloudTrailEvent struct {
+	EventName    string `json:"eventName"`
+	EventSource  string `json:"eventSource"`
+	UserIdentity struct {
+		Arn string `json:"arn"`
+	} `json:"userIdentity"`
+	EventTime time.Time `json:"eventTime"`
+}
+
+func (a *AWSScanner) HandleCloudTrailEvent(event CloudTrailEvent) (string, error) {
+	// Logic to analyze the event
+	// For MVP, we flag specific high-risk events
+
+	if event.EventName == "StopLogging" && event.EventSource == "cloudtrail.amazonaws.com" {
+		return fmt.Sprintf("CRITICAL: CloudTrail logging stopped by %s at %s", event.UserIdentity.Arn, event.EventTime), nil
+	}
+
+	if event.EventName == "AuthorizeSecurityGroupIngress" {
+		return fmt.Sprintf("WARNING: Security Group Ingress modified by %s", event.UserIdentity.Arn), nil
+	}
+
+	return "", nil // No alert needed
+}

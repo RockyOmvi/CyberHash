@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/cybershield-ai/core/internal/api"
+	"github.com/cybershield-ai/core/internal/cache"
+	"github.com/cybershield-ai/core/internal/secrets"
 )
 
 func main() {
@@ -22,7 +24,15 @@ func main() {
 		port = "8080"
 	}
 
-	server := api.NewServer()
+	// Initialize Redis Cache
+	if err := cache.InitRedis(); err != nil {
+		slog.Warn("Failed to connect to Redis, caching will be disabled", "error", err)
+	}
+
+	// Initialize Secrets Manager
+	secretsManager := secrets.NewEnvManager()
+
+	server := api.NewServer(secretsManager)
 
 	srv := &http.Server{
 		Addr:    ":" + port,

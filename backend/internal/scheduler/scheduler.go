@@ -91,3 +91,10 @@ func (s *Scheduler) GetSchedules() ([]ScheduledScan, error) {
 	}
 	return schedules, nil
 }
+
+func (s *Scheduler) RemoveSchedule(id string) error {
+	if err := s.db.Delete(&ScheduledScan{}, "id = ?", id).Error; err != nil {
+		return err
+	}
+	return nil
+}

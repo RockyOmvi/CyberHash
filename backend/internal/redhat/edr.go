@@ -39,17 +39,21 @@ func (e *EDREngine) StartRealMonitoring() {
 				// Simple "Malicious" Detection Logic
 				// In a real product, this would check signatures/hashes.
 				// Here we flag common tools often used by attackers if found.
-				isSuspicious := false
-				details := ""
+				isSuspicious, details := e.IsMalicious(name)
 
-				lowerName := strings.ToLower(name)
-				switch lowerName {
-				case "ncat.exe", "nc.exe":
-					isSuspicious = true
-					details = "Netcat detected (Potential Reverse Shell)"
-				case "mimikatz.exe":
-					isSuspicious = true
-					details = "Mimikatz detected (Credential Dumping)"
+				// Behavioral Analysis: Check Parent-Child Relationship
+				if !isSuspicious {
+					parent, err := p.Parent()
+					if err == nil {
+						parentName, err := parent.Name()
+						if err == nil {
+							isBehavioral, behavioralDetails := e.IsSuspiciousBehavior(name, parentName)
+							if isBehavioral {
+								isSuspicious = true
+								details = behavioralDetails
+							}
+						}
+					}
 				}
 
 				if isSuspicious {
@@ -88,4 +92,41 @@ func (e *EDREngine) GetEvents() []models.SimulationEvent {
 	var events []models.SimulationEvent
 	e.db.Where("engine = ?", "EDR").Order("timestamp desc").Limit(20).Find(&events)
 	return events
+}
+
+// IsMalicious checks if a process name matches known malicious tools
+func (e *EDREngine) IsMalicious(name string) (bool, string) {
+	lowerName := strings.ToLower(name)
+	switch lowerName {
+	case "ncat.exe", "nc.exe":
+		return true, "Netcat detected (Potential Reverse Shell)"
+	case "mimikatz.exe":
+		return true, "Mimikatz detected (Credential Dumping)"
+	}
+	return false, ""
+}
+
+// IsSuspiciousBehavior checks for suspicious parent-child process chains
+func (e *EDREngine) IsSuspiciousBehavior(childName, parentName string) (bool, string) {
+	child := strings.ToLower(childName)
+	parent := strings.ToLower(parentName)
+
+	// Rule 1: Office apps spawning shells (Macro malware)
+	if (parent == "winword.exe" || parent == "excel.exe" || parent == "powerpnt.exe") &&
+		(child == "cmd.exe" || child == "powershell.exe") {
+		return true, fmt.Sprintf("Suspicious: Office app (%s) spawned shell (%s)", parentName, childName)
+	}
+
+	// Rule 2: Web servers spawning shells (Webshell)
+	if (parent == "w3wp.exe" || parent == "httpd.exe" || parent == "nginx.exe" || parent == "apache.exe") &&
+		(child == "cmd.exe" || child == "powershell.exe" || child == "bash") {
+		return true, fmt.Sprintf("Suspicious: Web server (%s) spawned shell (%s)", parentName, childName)
+	}
+
+	// Rule 3: Java spawning shell (Log4j / Deserialization)
+	if parent == "java.exe" && (child == "cmd.exe" || child == "powershell.exe" || child == "bash") {
+		return true, fmt.Sprintf("Suspicious: Java process (%s) spawned shell (%s)", parentName, childName)
+	}
+
+	return false, ""
 }
