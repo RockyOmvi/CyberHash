@@ -21,7 +21,7 @@ func NewZAPScanner(apiKey string) *ZAPScanner {
 }
 
 func (z *ZAPScanner) Start(ctx context.Context, target string) (string, error) {
-	scanID := fmt.Sprintf("zap-%d", time.Now().Unix())
+	scanID := fmt.Sprintf("zap-%d", time.Now().UnixNano())
 	fmt.Printf("Starting Real ZAP Scan for %s with ID %s\n", target, scanID)
 	z.scanStart.Store(scanID, time.Now())
 

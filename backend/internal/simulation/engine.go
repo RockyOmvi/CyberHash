@@ -41,7 +41,7 @@ func (s *SimulationEngine) generateRandomEvent() {
 		Severity:  severities[rand.Intn(len(severities))],
 		Source:    fmt.Sprintf("192.168.1.%d", rand.Intn(255)),
 		Target:    "Production-DB",
-		Details:   fmt.Sprintf("Simulated %s activity detected by CyberShield AI.", engine),
+		Details:   fmt.Sprintf("Simulated %s activity detected by CyberShield AI", engine),
 		Status:    "Active",
 		Timestamp: time.Now(),
 	}

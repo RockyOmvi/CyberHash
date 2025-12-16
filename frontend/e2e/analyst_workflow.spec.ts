@@ -3,30 +3,39 @@ import { test, expect } from '@playwright/test';
 test.describe('Analyst Workflow', () => {
     test('should allow a user to login, scan, and remediate', async ({ page }) => {
         // 1. Login
+        console.log('Navigating to login...');
         await page.goto('/login');
+        console.log('Filling credentials...');
         await page.fill('input[type="email"]', 'analyst@cybershield.ai');
         await page.fill('input[type="password"]', 'securepassword123');
         await page.click('button[type="submit"]');
 
-        // Expect to be redirected to dashboard
-        await expect(page).toHaveURL('/dashboard');
-        await expect(page.locator('h1')).toContainText('Security Dashboard');
+        // Expect to be redirected to dashboard (root)
+        console.log('Waiting for redirect...');
+        await expect(page).toHaveURL('/');
+        // Check for "Security Score" card title which is present on Dashboard
+        await expect(page.locator('text=Security Score')).toBeVisible();
+        console.log('Dashboard loaded.');
 
-        // 2. Start Scan
-        await page.click('text=New Scan');
-        await page.fill('input[name="target"]', 'localhost');
+        // 2. Navigate to Scans Page
+        console.log('Navigating to Scans...');
+        await page.click('text=Scans');
+        await expect(page).toHaveURL('/scans');
+
+        // 3. Start Scan
+        console.log('Starting scan...');
+        // Input has no name, use placeholder or type
+        await page.fill('input[placeholder*="Enter target"]', 'localhost');
         await page.click('button:has-text("Start Scan")');
 
-        // Expect scan to appear in history or status
-        await expect(page.locator('.scan-status')).toContainText('Running', { timeout: 10000 });
+        // Expect redirect to history
+        console.log('Waiting for history redirect...');
+        await expect(page).toHaveURL('/history');
 
-        // 3. View Results (Mocking completion or waiting)
-        // In a real E2E, we'd wait for completion. 
-        // For this test, we assume we can navigate to results.
-        // await page.click('text=View Results');
-
-        // 4. Remediation
-        // await page.click('text=Fix Issue');
-        // await expect(page.locator('.remediation-modal')).toBeVisible();
+        // 4. Verify Scan appears in history
+        // It should show "localhost" and potentially "running" or "completed"
+        console.log('Verifying history...');
+        await expect(page.locator('text=localhost')).toBeVisible({ timeout: 10000 });
+        console.log('Test complete.');
     });
 });

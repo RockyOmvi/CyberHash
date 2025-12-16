@@ -45,7 +45,7 @@ type TrivyImageOutput struct {
 }
 
 func (s *ContainerScanner) ScanImage(ctx context.Context, image string) (*ContainerScan, error) {
-	scanID := fmt.Sprintf("scan-%d", time.Now().Unix())
+	scanID := fmt.Sprintf("scan-%d", time.Now().UnixNano())
 
 	// 1. Run Trivy
 	// Note: This requires 'trivy' to be in PATH

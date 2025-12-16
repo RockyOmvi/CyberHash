@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -48,6 +49,12 @@ func InitDB() (*gorm.DB, error) {
 		// Default to SQLite for local dev if not explicitly set to postgres
 		fmt.Println("Using SQLite (DB_DRIVER not set to postgres)")
 		dbName := getEnv("DB_NAME", "cybershield.db")
+		// Add busy_timeout to handle concurrent writes
+		if !contains(dbName, "?") {
+			dbName += "?_busy_timeout=5000"
+		} else {
+			dbName += "&_busy_timeout=5000"
+		}
 		DB, err = gorm.Open(sqlite.Open(dbName), &gorm.Config{Logger: newLogger})
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to SQLite: %w", err)
@@ -80,4 +87,8 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }

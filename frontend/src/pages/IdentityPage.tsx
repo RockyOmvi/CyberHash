@@ -51,7 +51,7 @@ export function IdentityPage() {
                         <div className="flex justify-between items-center">
                             <div>
                                 <p className="text-sm text-gray-400">Monitored Users</p>
-                                <p className="text-2xl font-bold text-white">1,240</p>
+                                <p className="text-2xl font-bold text-white">{alerts.length > 0 ? new Set(alerts.map(a => a.user)).size : 0}</p>
                             </div>
                             <UserCheck className="text-blue-400" size={32} />
                         </div>
@@ -62,7 +62,7 @@ export function IdentityPage() {
                         <div className="flex justify-between items-center">
                             <div>
                                 <p className="text-sm text-gray-400">Privileged Accounts</p>
-                                <p className="text-2xl font-bold text-white">45</p>
+                                <p className="text-2xl font-bold text-white">0</p>
                             </div>
                             <Shield className="text-yellow-400" size={32} />
                         </div>
@@ -73,7 +73,9 @@ export function IdentityPage() {
                         <div className="flex justify-between items-center">
                             <div>
                                 <p className="text-sm text-gray-400">MFA Bypass Attempts</p>
-                                <p className="text-2xl font-bold text-red-400">3</p>
+                                <p className="text-2xl font-bold text-red-400">
+                                    {alerts.filter(a => a.attack.includes('MFA')).length}
+                                </p>
                             </div>
                             <Lock className="text-red-400" size={32} />
                         </div>

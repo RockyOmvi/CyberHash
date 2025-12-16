@@ -18,7 +18,7 @@ export interface Vulnerability {
 }
 
 const API_BASE_URL = '/api/v1';
-const AUTH_BASE_URL = '/auth';
+const AUTH_BASE_URL = '/api/v1/auth';
 
 const getHeaders = () => {
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -27,6 +27,19 @@ const getHeaders = () => {
         headers['Authorization'] = `Bearer ${token}`;
     }
     return headers;
+};
+
+const handleResponse = async (response: Response) => {
+    if (response.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        throw new Error('Session expired. Please login again.');
+    }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Request failed');
+    }
+    return response.json();
 };
 
 export const api = {
@@ -51,25 +64,23 @@ export const api = {
     },
 
     startScan: async (target: string) => {
-        const response = await fetch(`${API_BASE_URL}/scans`, {
+        const response = await fetch(`${API_BASE_URL}/scan`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ target }),
         });
-        if (!response.ok) throw new Error('Failed to start scan');
-        return response.json();
+        return handleResponse(response);
     },
 
     getScanStatus: async (id: string) => {
-        const response = await fetch(`${API_BASE_URL}/scans/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/scan/${id}`, {
             headers: getHeaders(),
         });
-        if (!response.ok) throw new Error('Failed to get status');
-        return response.json();
+        return handleResponse(response);
     },
 
     remediate: async (title: string, description: string, techStack: string) => {
-        const response = await fetch(`${API_BASE_URL}/remediate`, {
+        const response = await fetch(`${API_BASE_URL}/remediate/fix`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ title, description, tech_stack: techStack }),
@@ -79,15 +90,14 @@ export const api = {
     },
 
     getScanHistory: async () => {
-        const response = await fetch(`${API_BASE_URL}/scans`, {
+        const response = await fetch(`${API_BASE_URL}/scans/history`, {
             headers: getHeaders(),
         });
-        if (!response.ok) throw new Error('Failed to fetch history');
-        return response.json();
+        return handleResponse(response);
     },
 
     downloadReport: async (scanId: string) => {
-        const response = await fetch(`${API_BASE_URL}/scans/${scanId}/report`, {
+        const response = await fetch(`${API_BASE_URL}/reports/download/${scanId}`, {
             headers: getHeaders(),
         });
         if (!response.ok) throw new Error('Failed to download report');
@@ -95,7 +105,7 @@ export const api = {
     },
 
     createSchedule: async (target: string, frequency: string) => {
-        const response = await fetch(`${API_BASE_URL}/schedules`, {
+        const response = await fetch(`${API_BASE_URL}/schedule`, {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ target, frequency }),

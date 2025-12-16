@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,7 @@ func (s *UserStore) Create(email, password, name string) (*User, error) {
 	}
 
 	if err := s.db.Create(user).Error; err != nil {
+		fmt.Printf("User Create Error: %v\n", err) // Added logging
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return nil, errors.New("user already exists")
 		}

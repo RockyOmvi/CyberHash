@@ -5,11 +5,11 @@ import { api } from '../services/api';
 
 interface Resource {
     id: string;
-    type: string;
-    ip_address: string;
+    name: string;
     status: string;
-    ttl: number;
-    created_at: string;
+    ttl: string; // Backend sends string for now
+    cost: string;
+    created: string;
 }
 
 export function EphemeralPage() {
@@ -25,7 +25,7 @@ export function EphemeralPage() {
             }
         };
         fetchResources();
-        const interval = setInterval(fetchResources, 1000); // Live TTL updates
+        const interval = setInterval(fetchResources, 5000); // Live updates
         return () => clearInterval(interval);
     }, []);
 
@@ -55,32 +55,26 @@ export function EphemeralPage() {
                     <Card key={r.id} className="border-white/10 bg-black/40">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium text-gray-300">
-                                {r.type}
+                                {r.name.includes('DB') ? 'Database' : 'Container'}
                             </CardTitle>
-                            {r.type === 'Container' ? <Box size={16} className="text-blue-400" /> : <Server size={16} className="text-purple-400" />}
+                            {r.name.includes('DB') ? <Server size={16} className="text-purple-400" /> : <Box size={16} className="text-blue-400" />}
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-white mb-1">{r.ip_address}</div>
+                            <div className="text-lg font-bold text-white mb-1 truncate" title={r.name}>{r.name}</div>
                             <p className="text-xs text-gray-500 font-mono mb-4">ID: {r.id}</p>
 
-                            <div className="flex justify-between items-center text-sm">
+                            <div className="flex justify-between items-center text-sm mb-2">
                                 <span className={`px-2 py-0.5 rounded text-xs font-bold ${r.status === 'Active' ? 'bg-green-500/20 text-green-400' :
-                                        r.status === 'Terminating' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
+                                    r.status === 'Terminating' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
                                     }`}>
                                     {r.status}
                                 </span>
                                 <div className="flex items-center gap-1 text-gray-400">
                                     <Clock size={14} />
-                                    <span className="font-mono">{r.ttl}s</span>
+                                    <span className="font-mono text-xs">{r.cost}</span>
                                 </div>
                             </div>
-
-                            <div className="mt-3 w-full bg-gray-800 h-1 rounded-full overflow-hidden">
-                                <div
-                                    className="bg-green-500 h-full transition-all duration-1000"
-                                    style={{ width: `${(r.ttl / 300) * 100}%` }}
-                                />
-                            </div>
+                            <p className="text-xs text-slate-500 italic truncate" title={r.ttl}>{r.ttl}</p>
                         </CardContent>
                     </Card>
                 ))}

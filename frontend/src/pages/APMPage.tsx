@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
+import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { GitGraph, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -9,6 +9,9 @@ interface Node {
     label: string;
     type: string;
     color: string;
+    x?: number;
+    y?: number;
+    z?: number;
 }
 
 interface Link {
@@ -30,9 +33,27 @@ export function APMPage() {
         const fetchGraph = async () => {
             try {
                 const data = await api.getAPMGraph();
-                setGraphData(data || { nodes: [], links: [] });
+                // Transform metrics into graph nodes/links if data is array
+                if (Array.isArray(data)) {
+                    const nodes = data.map((m: any) => ({
+                        id: m.id,
+                        label: m.service,
+                        type: 'service',
+                        color: m.status === 'Healthy' ? '#10b981' : '#ef4444'
+                    }));
+                    // Create dummy links for visualization
+                    const links = nodes.slice(1).map((n, i) => ({
+                        source: nodes[i].id,
+                        target: n.id,
+                        label: 'connects'
+                    }));
+                    setGraphData({ nodes, links });
+                } else {
+                    setGraphData(data || { nodes: [], links: [] });
+                }
             } catch (error) {
                 console.error("Failed to fetch APM graph:", error);
+                setGraphData({ nodes: [], links: [] });
             }
         };
         fetchGraph();
@@ -72,13 +93,15 @@ export function APMPage() {
                             linkDirectionalArrowRelPos={1}
                             backgroundColor="rgba(0,0,0,0)"
                             onNodeClick={node => {
-                                const distance = 40;
-                                const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-                                fgRef.current.cameraPosition(
-                                    { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-                                    node,
-                                    3000
-                                );
+                                if (node.x !== undefined && node.y !== undefined && node.z !== undefined) {
+                                    const distance = 40;
+                                    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+                                    fgRef.current.cameraPosition(
+                                        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+                                        node,
+                                        3000
+                                    );
+                                }
                             }}
                         />
                     )}

@@ -78,8 +78,8 @@ function AppContent() {
     const { isAuthenticated } = useAuth();
     return (
         <Routes>
-            <Route path="/login" element={!isAuthenticated ? <LoginPage onRegisterClick={() => { }} /> : <Navigate to="/" />} />
-            <Route path="/register" element={!isAuthenticated ? <RegisterPage onLoginClick={() => { }} /> : <Navigate to="/" />} />
+            <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" />} />
+            <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/" />} />
 
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/threat-hunting" element={<ProtectedRoute><ThreatHuntingPage /></ProtectedRoute>} />

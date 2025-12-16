@@ -32,14 +32,21 @@ const Dashboard = () => {
     });
     const { messages } = useWebSocket();
     const [logs, setLogs] = useState<string[]>([]);
-
     const [topVulns, setTopVulns] = useState<Vulnerability[]>([]);
+    const [trendData, setTrendData] = useState<{ name: string; vulns: number }[]>([]);
+    const [complianceData, setComplianceData] = useState<{ name: string; score: number }[]>([]);
+
+    useEffect(() => {
+        if (messages.length > 0) {
+            setLogs(prev => [messages[messages.length - 1], ...prev].slice(0, 10));
+        }
+    }, [messages]);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const statsData = await api.getDashboardStats();
-                setStats(statsData);
+                setStats(prev => ({ ...prev, ...statsData })); // Merge with default or previous
 
                 const historyData = await api.getScanHistory();
                 if (historyData.scans && historyData.scans.length > 0) {
@@ -49,6 +56,11 @@ const Dashboard = () => {
                     const severityOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
                     allVulns.sort((a, b) => (severityOrder[a.severity as keyof typeof severityOrder] ?? 4) - (severityOrder[b.severity as keyof typeof severityOrder] ?? 4));
                     setTopVulns(allVulns.slice(0, 5));
+
+                    // Generate real trend data from history (mock logic for now as history might not have dates in this specific format easily accessible without parsing)
+                    // For now, leave trend empty or generate flat line if no data
+                    setTrendData([]);
+                    setComplianceData([]);
                 }
             } catch (error) {
                 console.error("Failed to fetch dashboard data:", error);
@@ -56,29 +68,6 @@ const Dashboard = () => {
         };
         fetchData();
     }, []);
-
-    useEffect(() => {
-        if (messages.length > 0) {
-            setLogs(prev => [messages[messages.length - 1], ...prev].slice(0, 10));
-        }
-    }, [messages]);
-
-    const trendData = [
-        { name: 'Mon', vulns: 40 },
-        { name: 'Tue', vulns: 30 },
-        { name: 'Wed', vulns: 45 },
-        { name: 'Thu', vulns: 25 },
-        { name: 'Fri', vulns: 55 },
-        { name: 'Sat', vulns: 20 },
-        { name: 'Sun', vulns: 15 },
-    ];
-
-    const complianceData = [
-        { name: 'ISO 27001', score: 85 },
-        { name: 'GDPR', score: 92 },
-        { name: 'NIST', score: 78 },
-        { name: 'PCI DSS', score: 88 },
-    ];
 
     return (
         <div className="space-y-6">
@@ -91,7 +80,7 @@ const Dashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-white">{stats.score}/100</div>
-                        <p className="text-xs text-blue-300/70 mt-1">+2.5% from last week</p>
+                        <p className="text-xs text-blue-300/70 mt-1">Real-time assessment</p>
                         <div className="w-full bg-white/10 h-1.5 rounded-full mt-3 overflow-hidden">
                             <div className="bg-blue-500 h-full rounded-full" style={{ width: `${stats.score}%` }}></div>
                         </div>
@@ -106,10 +95,11 @@ const Dashboard = () => {
                     <CardContent>
                         <div className="text-2xl font-bold text-white">{stats.critical}</div>
                         <p className="text-xs text-red-300/70 mt-1">Requires immediate attention</p>
-                        <div className="flex gap-2 mt-3">
-                            <Badge variant="destructive" className="bg-red-500/20 text-red-400 border-red-500/50">SQLi</Badge>
-                            <Badge variant="destructive" className="bg-red-500/20 text-red-400 border-red-500/50">RCE</Badge>
-                        </div>
+                        {stats.critical > 0 && (
+                            <div className="flex gap-2 mt-3">
+                                <Badge variant="destructive" className="bg-red-500/20 text-red-400 border-red-500/50">Action Required</Badge>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -134,8 +124,8 @@ const Dashboard = () => {
                         <Lock className="h-4 w-4 text-purple-400" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-white">12</div>
-                        <p className="text-xs text-purple-300/70 mt-1">Fixes ready to deploy</p>
+                        <div className="text-2xl font-bold text-white">{stats.vulns}</div>
+                        <p className="text-xs text-purple-300/70 mt-1">Potential fixes available</p>
                         <Button size="sm" className="w-full mt-3 bg-purple-600 hover:bg-purple-700 text-white border-none" onClick={() => navigate('/vulnerabilities')}>
                             Review Fixes
                         </Button>
@@ -150,25 +140,33 @@ const Dashboard = () => {
                         <CardTitle>Vulnerability Trends</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={trendData}>
-                                    <defs>
-                                        <linearGradient id="colorVulns" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                    <XAxis dataKey="name" stroke="#6b7280" fontSize={12} tickLine={false} axisLine={false} />
-                                    <YAxis stroke="#6b7280" fontSize={12} tickLine={false} axisLine={false} />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px' }}
-                                        itemStyle={{ color: '#fff' }}
-                                    />
-                                    <Area type="monotone" dataKey="vulns" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorVulns)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                        <div className="h-[300px] w-full flex items-center justify-center">
+                            {trendData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={trendData}>
+                                        <defs>
+                                            <linearGradient id="colorVulns" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                                        <XAxis dataKey="name" stroke="#6b7280" fontSize={12} tickLine={false} axisLine={false} />
+                                        <YAxis stroke="#6b7280" fontSize={12} tickLine={false} axisLine={false} />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px' }}
+                                            itemStyle={{ color: '#fff' }}
+                                        />
+                                        <Area type="monotone" dataKey="vulns" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorVulns)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="text-center text-gray-500">
+                                    <Activity className="mx-auto h-12 w-12 mb-2 opacity-20" />
+                                    <p>No trend data available yet.</p>
+                                    <p className="text-xs">Run regular scans to build history.</p>
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -179,30 +177,40 @@ const Dashboard = () => {
                         <CardTitle>Compliance Status</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={complianceData} layout="vertical" margin={{ left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" horizontal={false} />
-                                    <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} width={80} />
-                                    <Tooltip
-                                        cursor={{ fill: 'transparent' }}
-                                        contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px' }}
-                                    />
-                                    <Bar dataKey="score" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} background={{ fill: '#ffffff05' }} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                        <div className="mt-4 space-y-2">
-                            {complianceData.map((item) => (
-                                <div key={item.name} className="flex items-center justify-between text-sm">
-                                    <span className="text-gray-400">{item.name}</span>
-                                    <span className={item.score >= 90 ? "text-green-400" : item.score >= 80 ? "text-yellow-400" : "text-red-400"}>
-                                        {item.score}%
-                                    </span>
+                        <div className="h-[300px] w-full flex items-center justify-center">
+                            {complianceData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={complianceData} layout="vertical" margin={{ left: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" horizontal={false} />
+                                        <XAxis type="number" hide />
+                                        <YAxis dataKey="name" type="category" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} width={80} />
+                                        <Tooltip
+                                            cursor={{ fill: 'transparent' }}
+                                            contentStyle={{ backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px' }}
+                                        />
+                                        <Bar dataKey="score" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} background={{ fill: '#ffffff05' }} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="text-center text-gray-500">
+                                    <Shield className="mx-auto h-12 w-12 mb-2 opacity-20" />
+                                    <p>Compliance data pending.</p>
+                                    <p className="text-xs">Configure policies to see status.</p>
                                 </div>
-                            ))}
+                            )}
                         </div>
+                        {complianceData.length > 0 && (
+                            <div className="mt-4 space-y-2">
+                                {complianceData.map((item) => (
+                                    <div key={item.name} className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-400">{item.name}</span>
+                                        <span className={item.score >= 90 ? "text-green-400" : item.score >= 80 ? "text-yellow-400" : "text-red-400"}>
+                                            {item.score}%
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -217,7 +225,13 @@ const Dashboard = () => {
                     <CardContent className="flex-1 overflow-hidden">
                         <div className="h-full overflow-y-auto space-y-2 pr-2 font-mono text-xs">
                             {logs.length === 0 ? (
-                                <div className="text-gray-500 italic">Waiting for events...</div>
+                                <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                                    <div className="p-4 rounded-full bg-green-500/10 mb-3">
+                                        <Shield className="h-8 w-8 text-green-400" />
+                                    </div>
+                                    <p className="font-medium text-gray-400">System Secure</p>
+                                    <p className="text-xs mt-1">No active threats detected in real-time stream.</p>
+                                </div>
                             ) : (
                                 logs.map((log, i) => (
                                     <div key={i} className="p-2 rounded bg-white/5 border border-white/5 text-gray-300 hover:bg-white/10 transition-colors">
@@ -246,7 +260,16 @@ const Dashboard = () => {
                             <tbody className="divide-y divide-white/10">
                                 {topVulns.length === 0 ? (
                                     <tr>
-                                        <td colSpan={3} className="px-4 py-3 text-center text-gray-500">No vulnerabilities found.</td>
+                                        <td colSpan={3} className="px-4 py-12 text-center">
+                                            <div className="flex flex-col items-center justify-center text-gray-500">
+                                                <div className="p-4 rounded-full bg-blue-500/10 mb-3">
+                                                    <Shield className="h-8 w-8 text-blue-400" />
+                                                </div>
+                                                <p className="font-medium text-gray-400">Clean Slate</p>
+                                                <p className="text-xs mt-1 mb-3">No vulnerabilities detected.</p>
+                                                <Button size="sm" variant="outline" onClick={() => navigate('/scans')}>Run New Scan</Button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ) : (
                                     topVulns.map((vuln, idx) => (

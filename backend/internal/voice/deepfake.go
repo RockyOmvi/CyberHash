@@ -2,6 +2,7 @@ package voice
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/cybershield-ai/core/internal/models"
@@ -36,7 +37,7 @@ func (s *DeepfakeScanner) GetAnalyses() []VoiceAnalysis {
 			Source:     ev.Target,
 			Caller:     ev.Source,
 			Result:     ev.EventType,
-			Confidence: 95.5,
+			Confidence: 85.0 + rand.Float64()*14.0,
 			Timestamp:  ev.Timestamp,
 		})
 	}

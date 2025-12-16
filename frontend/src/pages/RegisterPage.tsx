@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Shield, Lock, Mail, User, Loader2, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-export function RegisterPage({ onLoginClick }: { onLoginClick: () => void }) {
+export function RegisterPage() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -18,8 +19,8 @@ export function RegisterPage({ onLoginClick }: { onLoginClick: () => void }) {
         try {
             const data = await api.register(email, password, name);
             login(data.token, data.user);
-        } catch (err) {
-            setError('Registration failed. Email might be taken.');
+        } catch (err: any) {
+            setError(err.message || 'Registration failed. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -111,9 +112,9 @@ export function RegisterPage({ onLoginClick }: { onLoginClick: () => void }) {
                 <div className="mt-6 text-center">
                     <p className="text-slate-400 text-sm">
                         Already have an account?{' '}
-                        <button onClick={onLoginClick} className="text-purple-400 hover:text-purple-300 font-medium transition-colors">
+                        <Link to="/login" className="text-purple-400 hover:text-purple-300 font-medium transition-colors">
                             Sign in
-                        </button>
+                        </Link>
                     </p>
                     <p className="text-slate-600 text-xs mt-4">Powered by Omvi</p>
                 </div>

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Mic, PhoneOff, UserX, ShieldCheck } from 'lucide-react';
+import { Mic, UserX, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 
 interface VoiceAlert {
     id: string;
     timestamp: string;
-    caller_id: string;
-    platform: string;
+    caller: string;
+    source: string;
     confidence: number;
-    status: string;
+    result: string;
 }
 
 export function DeepfakePage() {
@@ -79,23 +79,23 @@ export function DeepfakePage() {
                                 {alerts.map(a => (
                                     <tr key={a.id} className="hover:bg-white/5 transition-colors">
                                         <td className="px-4 py-3">{new Date(a.timestamp).toLocaleString()}</td>
-                                        <td className="px-4 py-3 font-medium text-white">{a.caller_id}</td>
-                                        <td className="px-4 py-3">{a.platform}</td>
+                                        <td className="px-4 py-3 font-medium text-white">{a.caller}</td>
+                                        <td className="px-4 py-3">{a.source}</td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-24 h-2 bg-gray-700 rounded-full overflow-hidden">
                                                     <div
-                                                        className={`h-full ${a.confidence > 0.9 ? 'bg-red-500' : 'bg-yellow-500'}`}
-                                                        style={{ width: `${a.confidence * 100}%` }}
+                                                        className={`h-full ${a.confidence > 90 ? 'bg-red-500' : 'bg-yellow-500'}`}
+                                                        style={{ width: `${a.confidence}%` }}
                                                     />
                                                 </div>
-                                                <span className="text-xs">{(a.confidence * 100).toFixed(0)}%</span>
+                                                <span className="text-xs">{a.confidence.toFixed(1)}%</span>
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${a.status === 'Blocked' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${a.result.includes('DETECTED') ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
                                                 }`}>
-                                                {a.status}
+                                                {a.result.includes('DETECTED') ? 'Blocked' : 'Allowed'}
                                             </span>
                                         </td>
                                     </tr>

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+import { api } from '../services/api';
 
 export function NetworkGraph() {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -20,11 +21,8 @@ export function NetworkGraph() {
         const fetchData = async () => {
             try {
                 // Fetch real data from the backend APM endpoint
-                const response = await fetch('/api/v1/apm/graph');
-                if (response.ok) {
-                    const graphData = await response.json();
-                    setData(graphData);
-                }
+                const graphData = await api.getAPMGraph();
+                setData(graphData);
             } catch (error) {
                 console.error("Failed to fetch network graph:", error);
             }

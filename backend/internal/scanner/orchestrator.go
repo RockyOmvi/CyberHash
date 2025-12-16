@@ -56,6 +56,7 @@ func (o *Orchestrator) Start(ctx context.Context, target string) (string, error)
 		Status: "queued",
 	}
 	if err := o.db.Create(scan).Error; err != nil {
+		fmt.Printf("DB Create Error: %v\n", err) // Added logging
 		return "", fmt.Errorf("failed to create scan record: %v", err)
 	}
 

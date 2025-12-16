@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Shield, Lock, Mail, Loader2, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-export function LoginPage({ onRegisterClick }: { onRegisterClick: () => void }) {
+export function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -17,8 +18,8 @@ export function LoginPage({ onRegisterClick }: { onRegisterClick: () => void }) 
         try {
             const data = await api.login(email, password);
             login(data.token, data.user);
-        } catch (err) {
-            setError('Invalid credentials');
+        } catch (err: any) {
+            setError(err.message || 'Invalid credentials');
         } finally {
             setLoading(false);
         }
@@ -95,9 +96,9 @@ export function LoginPage({ onRegisterClick }: { onRegisterClick: () => void }) 
                 <div className="mt-6 text-center">
                     <p className="text-slate-400 text-sm">
                         Don't have an account?{' '}
-                        <button onClick={onRegisterClick} className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors">
+                        <Link to="/register" className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors">
                             Create one
-                        </button>
+                        </Link>
                     </p>
                     <p className="text-slate-600 text-xs mt-4">Powered by Omvi</p>
                 </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Cpu, Activity, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Cpu, Activity, ShieldAlert } from 'lucide-react';
 import { api } from '../services/api';
 
 interface TelemetryEvent {
@@ -19,7 +19,16 @@ export function HardwarePage() {
         const fetchEvents = async () => {
             try {
                 const data = await api.getHardwareTelemetry();
-                setEvents(data || []);
+                // Map backend HardwareTelemetry to frontend TelemetryEvent
+                const mappedEvents = Array.isArray(data) ? data.map((e: any) => ({
+                    id: e.ID?.toString() || Math.random().toString(),
+                    timestamp: e.timestamp,
+                    source: e.device_id || 'Unknown',
+                    event_type: 'Telemetry',
+                    severity: e.status === 'Healthy' ? 'Info' : 'Critical',
+                    details: `CPU: ${e.cpu_usage?.toFixed(1)}%, Mem: ${e.memory_usage?.toFixed(1)}%, Temp: ${e.temperature?.toFixed(1)}°C`
+                })) : [];
+                setEvents(mappedEvents);
             } catch (error) {
                 console.error("Failed to fetch telemetry:", error);
             }
@@ -53,7 +62,7 @@ export function HardwarePage() {
                         <div className="flex justify-between items-center">
                             <div>
                                 <p className="text-sm text-gray-400">Active Sensors</p>
-                                <p className="text-2xl font-bold text-white">24</p>
+                                <p className="text-2xl font-bold text-white">{events.length > 0 ? new Set(events.map(e => e.source)).size : 0}</p>
                             </div>
                             <Activity className="text-green-400" size={32} />
                         </div>

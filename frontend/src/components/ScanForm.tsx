@@ -31,8 +31,9 @@ export function ScanForm({ onScanStarted }: ScanFormProps) {
             }
             setTarget('');
             setFrequency('once');
-        } catch (err) {
-            setError('Failed to start scan. Please try again.');
+        } catch (err: any) {
+            const message = err.message || 'Failed to start scan. Please try again.';
+            setError(message);
         } finally {
             setLoading(false);
         }
